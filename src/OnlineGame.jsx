@@ -314,6 +314,7 @@ export default function OnlineGame({ onExit }) {
 
         <Chessboard
           position={gameFen}
+          boardOrientation={color === 'w' ? 'white' : 'black'}
           boardWidth={560}
           onPieceDrop={(src, dst) => onPieceDrop(src, dst)}
           onSquareClick={onSquareClick}
