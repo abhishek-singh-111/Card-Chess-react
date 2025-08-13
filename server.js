@@ -12,9 +12,7 @@ const io = new Server(server, {
 
 const PORT = process.env.PORT || 4000;
 
-// matchmaking queue
 const waiting = [];
-// roomId -> { game: Chess(), players: { white: sid, black: sid }, drawn: { sid: cardId|null } }
 const rooms = new Map();
 
 function buildAvailableCardsFromGame(g) {
@@ -23,7 +21,6 @@ function buildAvailableCardsFromGame(g) {
   moves.forEach((m) => {
     const p = m.piece;
     if (p === 'p') {
-      // Card per file, not rank
       cardSet.add(`pawn-${m.from[0]}`);
     } else if (p === 'n') cardSet.add('knight');
     else if (p === 'b') cardSet.add('bishop');
@@ -37,6 +34,7 @@ function buildAvailableCardsFromGame(g) {
 io.on('connection', (socket) => {
   console.log('connected', socket.id);
 
+  // MATCHMAKING
   socket.on('find_game', () => {
     if (waiting.length > 0) {
       const other = waiting.shift();
@@ -52,13 +50,39 @@ io.on('connection', (socket) => {
       io.to(other).emit('match_found', { roomId, color: 'w', fen: game.fen() });
       io.to(socket.id).emit('match_found', { roomId, color: 'b', fen: game.fen() });
 
-      // white goes first
       const avail = buildAvailableCardsFromGame(game);
       io.to(other).emit('available_cards', avail);
     } else {
       waiting.push(socket.id);
       socket.emit('waiting');
     }
+  });
+
+  // FRIEND MODE - CREATE ROOM
+  socket.on('create_room', () => {
+    const roomId = `friend-${Math.random().toString(36).substr(2, 6)}`;
+    const game = new Chess();
+    const players = { white: socket.id, black: null };
+    rooms.set(roomId, { game, players, drawn: {} });
+
+    socket.join(roomId);
+    socket.emit('room_created', { roomId });
+  });
+
+  // FRIEND MODE - JOIN ROOM
+  socket.on('join_room', ({ roomId }) => {
+    const room = rooms.get(roomId);
+    if (!room) return socket.emit('error', 'room-not-found');
+    if (room.players.black) return socket.emit('error', 'room-full');
+
+    room.players.black = socket.id;
+    socket.join(roomId);
+
+    io.to(room.players.white).emit('match_found', { roomId, color: 'w', fen: room.game.fen() });
+    io.to(room.players.black).emit('match_found', { roomId, color: 'b', fen: room.game.fen() });
+
+    const avail = buildAvailableCardsFromGame(room.game);
+    io.to(room.players.white).emit('available_cards', avail);
   });
 
   socket.on('draw_card', ({ roomId }) => {
@@ -89,9 +113,8 @@ io.on('connection', (socket) => {
     if (!piece) return socket.emit('invalid_move', 'no-piece');
 
     function isAllowedByCard(dCard, srcSquare, pType) {
-      if (!dCard) return false; // must draw before moving
+      if (!dCard) return false;
       if (dCard.startsWith('pawn-')) {
-        // Match file letter for pawn
         return pType === 'p' && srcSquare[0] === dCard.split('-')[1];
       }
       const map = { knight: 'n', bishop: 'b', rook: 'r', queen: 'q', king: 'k' };
@@ -107,11 +130,8 @@ io.on('connection', (socket) => {
     if (!chosen) return socket.emit('invalid_move', 'illegal');
 
     game.move({ from, to, promotion: 'q' });
-
-    // consume only this player's card
     drawn[socket.id] = null;
 
-    // broadcast updated state
     const fen = game.fen();
     const status = {
       isCheck: game.isCheck(),
@@ -120,7 +140,6 @@ io.on('connection', (socket) => {
     };
     io.to(roomId).emit('game_state', { fen, status });
 
-    // send available cards to next player
     const nextAvail = buildAvailableCardsFromGame(game);
     const nextSid = game.turn() === 'w' ? players.white : players.black;
     io.to(nextSid).emit('available_cards', nextAvail);
