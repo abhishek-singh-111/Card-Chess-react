@@ -4,7 +4,8 @@ import { Chess } from 'chess.js';
 import { Chessboard } from 'react-chessboard';
 import { io } from 'socket.io-client';
 
-const SERVER_URL = process.env.REACT_APP_SERVER_URL || 'http://localhost:4000';
+const SERVER_URL = process.env.REACT_APP_SERVER_URL || "https://card-chess.onrender.com";
+
 
 function CardSVG({ cardId, large = false }) {
   if (!cardId) return null;
