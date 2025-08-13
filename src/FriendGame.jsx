@@ -3,7 +3,9 @@ import React, { useEffect, useState } from 'react';
 import { io } from 'socket.io-client';
 import OnlineGame from './OnlineGame';
 
-const SERVER_URL = process.env.REACT_APP_SERVER_URL || 'http://localhost:4000';
+//const SERVER_URL = process.env.REACT_APP_SERVER_URL || 'http://localhost:4000';
+const SERVER_URL = process.env.REACT_APP_SERVER_URL || "https://card-chess.onrender.com";
+
 const socket = io(SERVER_URL);
 
 export default function FriendGame({ onExit }) {
