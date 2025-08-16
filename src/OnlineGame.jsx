@@ -72,6 +72,10 @@ export default function OnlineGame({ onExit }) {
   const [showResignConfirm, setShowResignConfirm] = useState(false);
   const [showGameOverModal, setShowGameOverModal] = useState(false);
   const [gameOverMessage, setGameOverMessage] = useState("");
+  const [lastMoveSquares, setLastMoveSquares] = useState(null);
+  const [whiteCaptured, setWhiteCaptured] = useState([]);
+  const [blackCaptured, setBlackCaptured] = useState([]);
+  const prevFenRef = useRef(new Chess().fen());
 
   const isMyTurn = useMemo(() => {
     if (!game || !color) return false;
@@ -101,6 +105,10 @@ export default function OnlineGame({ onExit }) {
       setSelectedFrom(null);
       setHighlightSquares({});
       setGameOver(false);
+      setLastMoveSquares(null);
+      prevFenRef.current = fen;
+      setWhiteCaptured([]);
+      setBlackCaptured([]);
     });
 
     s.on("available_cards", (arr) => {
@@ -117,8 +125,45 @@ export default function OnlineGame({ onExit }) {
       );
     });
 
-    s.on("game_state", ({ fen, status }) => {
+    s.on("game_state", ({ fen, status, lastMove }) => {
       const g = new Chess(fen);
+
+      // Detect capture
+      if (prevFenRef.current) {
+        const prev = new Chess(prevFenRef.current);
+        const prevPieces = ALL_SQUARES.map((sq) => prev.get(sq)).filter(
+          Boolean
+        );
+        const currPieces = ALL_SQUARES.map((sq) => g.get(sq)).filter(Boolean);
+
+        if (currPieces.length < prevPieces.length) {
+          // someone got captured
+          const diffMap = {};
+          prevPieces.forEach((p) => {
+            const key = p.color + p.type;
+            diffMap[key] = (diffMap[key] || 0) + 1;
+          });
+          currPieces.forEach((p) => {
+            const key = p.color + p.type;
+            diffMap[key] = (diffMap[key] || 0) - 1;
+          });
+          // diffMap has +1 for the disappeared piece
+          for (let key in diffMap) {
+            if (diffMap[key] > 0) {
+              const colorLost = key[0]; // 'w' or 'b'
+              const type = key[1]; // p,n,b,r,q,k
+              if (colorLost === "w") {
+                setBlackCaptured((prevArr) => [...prevArr, type]);
+              } else {
+                setWhiteCaptured((prevArr) => [...prevArr, type]);
+              }
+            }
+          }
+        }
+      }
+
+      prevFenRef.current = fen; // update for next time
+
       setGame(g);
       setGameFen(fen);
       setDrawnCard(null);
@@ -140,6 +185,11 @@ export default function OnlineGame({ onExit }) {
         setGameOver(false);
       }
 
+      if (lastMove) {
+        setLastMoveSquares(lastMove);
+      } else {
+        setLastMoveSquares(null);
+      }
       setSelectedFrom(null);
       setHighlightSquares({});
     });
@@ -347,6 +397,46 @@ export default function OnlineGame({ onExit }) {
     socketRef.current.emit("resign", { roomId });
   }
 
+  function getMergedStyles() {
+    const styles = { ...highlightSquares };
+    if (lastMoveSquares) {
+      const { from, to } = lastMoveSquares;
+      styles[from] = { background: "rgba(255, 255, 0, 0.5)" };
+      styles[to] = { background: "rgba(255, 255, 0, 0.5)" };
+    }
+    return styles;
+  }
+
+  const pieceImages = {
+    w: {
+      p: "https://chessboardjs.com/img/chesspieces/wikipedia/wP.png",
+      n: "https://chessboardjs.com/img/chesspieces/wikipedia/wN.png",
+      b: "https://chessboardjs.com/img/chesspieces/wikipedia/wB.png",
+      r: "https://chessboardjs.com/img/chesspieces/wikipedia/wR.png",
+      q: "https://chessboardjs.com/img/chesspieces/wikipedia/wQ.png",
+      k: "https://chessboardjs.com/img/chesspieces/wikipedia/wK.png",
+    },
+    b: {
+      p: "https://chessboardjs.com/img/chesspieces/wikipedia/bP.png",
+      n: "https://chessboardjs.com/img/chesspieces/wikipedia/bN.png",
+      b: "https://chessboardjs.com/img/chesspieces/wikipedia/bB.png",
+      r: "https://chessboardjs.com/img/chesspieces/wikipedia/bR.png",
+      q: "https://chessboardjs.com/img/chesspieces/wikipedia/bQ.png",
+      k: "https://chessboardjs.com/img/chesspieces/wikipedia/bK.png",
+    },
+  };
+
+  function genSquares() {
+    const squares = [];
+    for (let file of "abcdefgh") {
+      for (let rank = 1; rank <= 8; rank++) {
+        squares.push(file + rank);
+      }
+    }
+    return squares;
+  }
+  const ALL_SQUARES = genSquares();
+
   return (
     <>
       <div style={{ display: "flex", gap: 20, padding: 20 }}>
@@ -355,6 +445,18 @@ export default function OnlineGame({ onExit }) {
           <div style={{ marginBottom: 6 }}>
             {statusText || (isMyTurn ? "Your turn" : "Opponent's turn")}
           </div>
+          {/* Captured pieces by opponent */}
+          <div style={{ display: "flex", gap: 4 }}>
+            {(color === "w" ? blackCaptured : whiteCaptured).map((t, idx) => (
+              <img
+                key={idx}
+                src={color === "w" ? pieceImages["w"][t] : pieceImages["b"][t]}
+                alt=""
+                style={{ width: 24, height: 24 }}
+              />
+            ))}
+          </div>
+
           <Chessboard
             position={gameFen}
             boardOrientation={color === "w" ? "white" : "black"}
@@ -362,8 +464,20 @@ export default function OnlineGame({ onExit }) {
             onPieceDrop={(src, dst) => onPieceDrop(src, dst)}
             onSquareClick={onSquareClick}
             onSquareRightClick={onSquareRightClick}
-            customSquareStyles={highlightSquares}
+            customSquareStyles={getMergedStyles()}
           />
+
+          {/* Captured pieces by me */}
+          <div style={{ display: "flex", gap: 4 }}>
+            {(color === "w" ? whiteCaptured : blackCaptured).map((t, idx) => (
+              <img
+                key={idx}
+                src={color === "w" ? pieceImages["b"][t] : pieceImages["w"][t]}
+                alt=""
+                style={{ width: 24, height: 24 }}
+              />
+            ))}
+          </div>
         </div>
         <div style={{ width: 320 }}>
           <h3>Card Deck</h3>
@@ -406,8 +520,11 @@ export default function OnlineGame({ onExit }) {
               </button>
             )}
             <button onClick={onExit}>Back</button>
-            <div style={{ marginTop: 12, color: '#666', fontSize: 15 }}>
-              <div><strong>Your color:</strong> {color === 'w' ? 'White' : color === 'b' ? 'Black' : '—'}</div>
+            <div style={{ marginTop: 12, color: "#666", fontSize: 15 }}>
+              <div>
+                <strong>Your color:</strong>{" "}
+                {color === "w" ? "White" : color === "b" ? "Black" : "—"}
+              </div>
             </div>
           </div>
         </div>
@@ -439,7 +556,9 @@ export default function OnlineGame({ onExit }) {
               <button onClick={confirmResign} style={{ marginRight: 8 }}>
                 Yes
               </button>
-              <button onClick={() => setShowResignConfirm(false)}>Cancel</button>
+              <button onClick={() => setShowResignConfirm(false)}>
+                Cancel
+              </button>
             </div>
           </div>
         </div>

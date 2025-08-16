@@ -195,7 +195,7 @@ io.on("connection", (socket) => {
       isCheckmate: game.isCheckmate(),
       isDraw: game.isDraw(),
     };
-    io.to(roomId).emit("game_state", { fen, status });
+    io.to(roomId).emit("game_state", { fen, status, lastMove: { from, to } });
 
     // If game over, don't draw for next player
     if (status.isCheckmate || status.isDraw) return;
@@ -212,15 +212,15 @@ io.on("connection", (socket) => {
   });
 
   socket.on("resign", ({ roomId }) => {
-   const room = rooms.get(roomId);
-  if (!room) return;
+    const room = rooms.get(roomId);
+    if (!room) return;
 
-  io.to(roomId).emit("gameOver", {
-    reason: "resign",
-    resignedId: socket.id
-  });
+    io.to(roomId).emit("gameOver", {
+      reason: "resign",
+      resignedId: socket.id,
+    });
 
-  rooms.delete(roomId);
+    rooms.delete(roomId);
   });
 
   socket.on("disconnect", () => {
