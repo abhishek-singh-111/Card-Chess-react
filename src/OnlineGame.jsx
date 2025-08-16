@@ -64,7 +64,6 @@ export default function OnlineGame({ onExit }) {
   const [color, setColor] = useState(null); // 'w' | 'b'
   const [game, setGame] = useState(() => new Chess());
   const [gameFen, setGameFen] = useState(new Chess().fen());
-  const [availableCards, setAvailableCards] = useState([]);
   const [drawnCard, setDrawnCard] = useState(null);
   const [highlightSquares, setHighlightSquares] = useState({});
   const [selectedFrom, setSelectedFrom] = useState(null);
@@ -101,7 +100,6 @@ export default function OnlineGame({ onExit }) {
       setGame(g);
       setGameFen(fen);
       setDrawnCard(null);
-      setAvailableCards([]);
       setSelectedFrom(null);
       setHighlightSquares({});
       setGameOver(false);
@@ -109,10 +107,6 @@ export default function OnlineGame({ onExit }) {
       prevFenRef.current = fen;
       setWhiteCaptured([]);
       setBlackCaptured([]);
-    });
-
-    s.on("available_cards", (arr) => {
-      setAvailableCards(arr);
     });
 
     s.on("card_drawn", ({ card }) => {
@@ -167,7 +161,6 @@ export default function OnlineGame({ onExit }) {
       setGame(g);
       setGameFen(fen);
       setDrawnCard(null);
-      setAvailableCards([]);
 
       if (status.isCheckmate) {
         setStatusText("Checkmate! Game over.");
