@@ -6,9 +6,10 @@ import { io } from "socket.io-client";
 import moveSelf from "./sounds/move-self.mp3";
 import captureMp3 from "./sounds/capture.mp3";
 import moveCheck from "./sounds/move-check.mp3";
+import "./Play.css";
 
-const SERVER_URL =
-  process.env.REACT_APP_SERVER_URL || "https://card-chess.onrender.com";
+const SERVER_URL = process.env.REACT_APP_SERVER_URL || 'http://localhost:4000';
+//const SERVER_URL = process.env.REACT_APP_SERVER_URL || "https://card-chess.onrender.com";
 
 // Sound effects
 const moveSound = new Audio(moveSelf);
@@ -65,7 +66,8 @@ function CardSVG({ cardId, large = false }) {
   );
 }
 
-export default function OnlineGame({ onExit }) {
+// export default function OnlineGame({ onExit }) {
+export default function OnlineGame({ onExit, socket: externalSocket, roomId: initialRoomId, color: initialColor, fen: initialFen }) {
   const socketRef = useRef(null);
 
   // core state
@@ -94,14 +96,32 @@ export default function OnlineGame({ onExit }) {
   }, [game, color]);
 
   useEffect(() => {
-    const s = io(SERVER_URL);
-    socketRef.current = s;
+    let s;
 
-    s.on("connect", () => {
-      setStatusText("Connected. Finding match...");
-      s.emit("find_game");
-    });
+    if (externalSocket) {
+      // --- Friend mode ---
+      s = externalSocket;
+      socketRef.current = s;
 
+      setRoomId(initialRoomId);
+      setColor(initialColor);
+      setStatusText("Game started with friend.");
+
+      const g = new Chess(initialFen);
+      setGame(g);
+      setGameFen(initialFen);
+      prevFenRef.current = initialFen;
+    } else {
+      // --- Matchmaking mode ---
+      s = io(SERVER_URL);
+      socketRef.current = s;
+
+      s.on("connect", () => {
+        setStatusText("Connected. Finding match...");
+        s.emit("find_game");
+      });
+    }
+    
     s.on("waiting", () => setStatusText("Waiting for opponent..."));
 
     s.on("match_found", ({ roomId: rid, color: col, fen }) => {
@@ -256,7 +276,9 @@ export default function OnlineGame({ onExit }) {
     });
 
     return () => {
-      s.disconnect();
+      if (!externalSocket) {
+        s.disconnect();
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
