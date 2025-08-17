@@ -3,8 +3,17 @@ import React, { useEffect, useRef, useState, useMemo } from "react";
 import { Chess } from "chess.js";
 import { Chessboard } from "react-chessboard";
 import { io } from "socket.io-client";
+import moveSelf from "./sounds/move-self.mp3";
+import captureMp3 from "./sounds/capture.mp3";
+import moveCheck from "./sounds/move-check.mp3";
 
 const SERVER_URL = process.env.REACT_APP_SERVER_URL || "https://card-chess.onrender.com";
+
+// Sound effects
+const moveSound = new Audio(moveSelf);
+const captureSound = new Audio(captureMp3);
+const checkSound = new Audio(moveCheck);
+const endSound = new Audio(moveCheck);
 
 function CardSVG({ cardId, large = false }) {
   if (!cardId) return null;
@@ -122,6 +131,8 @@ export default function OnlineGame({ onExit }) {
     s.on("game_state", ({ fen, status, lastMove }) => {
       const g = new Chess(fen);
 
+      let captureHappened = false;
+
       // Detect capture
       if (prevFenRef.current) {
         const prev = new Chess(prevFenRef.current);
@@ -132,6 +143,7 @@ export default function OnlineGame({ onExit }) {
 
         if (currPieces.length < prevPieces.length) {
           // someone got captured
+          captureHappened = true;
           const diffMap = {};
           prevPieces.forEach((p) => {
             const key = p.color + p.type;
@@ -154,6 +166,17 @@ export default function OnlineGame({ onExit }) {
             }
           }
         }
+      }
+
+      // play appropriate sound
+      if (status.isCheckmate || status.isDraw) {
+        endSound.play();
+      } else if (status.isCheck) {
+        checkSound.play();
+      } else if (captureHappened) {
+        captureSound.play();
+      } else {
+        moveSound.play();
       }
 
       prevFenRef.current = fen; // update for next time
@@ -512,7 +535,6 @@ export default function OnlineGame({ onExit }) {
                 Resign
               </button>
             )}
-            <button onClick={onExit}>Back</button>
             <div style={{ marginTop: 12, color: "#666", fontSize: 15 }}>
               <div>
                 <strong>Your color:</strong>{" "}
