@@ -208,6 +208,15 @@ io.on("connection", (socket) => {
     rooms.delete(roomId);
   });
 
+  socket.on("request_initial_cards", ({ roomId }) => {
+  const room = rooms.get(roomId);
+  if (!room) return;
+  const entry = room.drawn[socket.id];
+  if (entry && entry.options) {
+    io.to(socket.id).emit("cards_drawn", { cards: entry.options });
+  }
+});
+
   socket.on("disconnect", () => {
     const idx = waiting.indexOf(socket.id);
     if (idx !== -1) waiting.splice(idx, 1);

@@ -2,6 +2,7 @@
 import React, { useEffect, useState } from "react";
 import { Chess } from "chess.js";
 import { Chessboard } from "react-chessboard";
+import { useNavigate } from "react-router-dom";
 
 // CardSVG (same as before)
 function CardSVG({ cardId, large = false }) {
@@ -20,7 +21,8 @@ function CardSVG({ cardId, large = false }) {
   );
 }
 
-export default function LocalGame({ onExit }) {
+export default function LocalGame() {
+  const navigate = useNavigate();
   const [game, setGame] = useState(() => new Chess());
   const [selectedFrom, setSelectedFrom] = useState(null);
   const [highlightSquares, setHighlightSquares] = useState({});
@@ -229,7 +231,7 @@ export default function LocalGame({ onExit }) {
         />
         <div style={{ marginTop: 8, display: "flex", gap: 8, alignItems: "center" }}>
           <button onClick={resetGame}>Restart</button>
-          <button onClick={onExit}>Back</button>
+          <button onClick={() => navigate("/")}>Back</button>
           <div style={{ marginLeft: 12 }}>
             <strong>Turn:</strong> {game.turn() === "w" ? "White" : "Black"}
           </div>
