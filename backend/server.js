@@ -11,7 +11,8 @@ const io = new Server(server, { cors: { origin: "*" } });
 const PORT = process.env.PORT || 4000;
 
 const waiting = [];
-// roomId -> { game: Chess(), players: { white: sid, black: sid|null }, drawn: { sid: cardId|null } }
+// roomId -> { game: Chess(), players: { white: sid, black: sid|null },
+//            drawn: { sid: { options: [], chosen: null } }  }
 const rooms = new Map();
 
 function buildAvailableCardsFromGame(g) {
@@ -29,23 +30,25 @@ function buildAvailableCardsFromGame(g) {
   return Array.from(cardSet).sort();
 }
 
-// NEW: helper to auto-draw for a specific socket id based on current game
-function autoDrawFor(g, sid) {
+// NEW: Smart draw returns 1-3 cards
+function smartDrawFor(g) {
   const avail = buildAvailableCardsFromGame(g);
-  if (!avail.length) {
-    // No legal moves → stalemate/checkmate is handled after moves;
-    // here we just signal no card.
-    io.to(sid).emit("no_cards");
-    return null;
+  if (avail.length <= 3) {
+    // if fewer than 3 available, just return them
+    return avail;
   }
-  const choice = avail[Math.floor(Math.random() * avail.length)];
-  return choice;
+  // Simple heuristic: random sample of 3
+  const sample = [];
+  while (sample.length < 3) {
+    const pick = avail[Math.floor(Math.random() * avail.length)];
+    if (!sample.includes(pick)) sample.push(pick);
+  }
+  return sample;
 }
 
 io.on("connection", (socket) => {
   console.log("connected", socket.id);
 
-  // MATCHMAKING
   socket.on("find_game", () => {
     if (waiting.length > 0) {
       const other = waiting.shift();
@@ -65,25 +68,20 @@ io.on("connection", (socket) => {
         fen: game.fen(),
       });
 
-      // CHANGED: auto-draw for White immediately
+      // Draw for white
       const whiteSid = players.white;
-      const firstCard = autoDrawFor(game, whiteSid);
-      if (firstCard) {
-        rooms.get(roomId).drawn[whiteSid] = firstCard;
-        io.to(whiteSid).emit("card_drawn", { card: firstCard });
-      }
-      // Optional: still share available cards for UI/debug if you want
-      io.to(whiteSid).emit(
-        "available_cards",
-        buildAvailableCardsFromGame(game)
-      );
+      const cardChoices = smartDrawFor(game);
+      rooms.get(roomId).drawn[whiteSid] = {
+        options: cardChoices,
+        chosen: null,
+      };
+      io.to(whiteSid).emit("cards_drawn", { cards: cardChoices });
     } else {
       waiting.push(socket.id);
       socket.emit("waiting");
     }
   });
 
-  // FRIEND MODE - CREATE ROOM
   socket.on("create_room", () => {
     const roomId = `friend-${Math.random().toString(36).substr(2, 6)}`;
     const game = new Chess();
@@ -94,7 +92,6 @@ io.on("connection", (socket) => {
     socket.emit("room_created", { roomId });
   });
 
-  // FRIEND MODE - JOIN ROOM
   socket.on("join_room", ({ roomId }) => {
     const room = rooms.get(roomId);
     if (!room) return socket.emit("error", "room-not-found");
@@ -114,29 +111,20 @@ io.on("connection", (socket) => {
       fen: room.game.fen(),
     });
 
-    // CHANGED: auto-draw for White on friend start too
+    // Draw for white
     const whiteSid = room.players.white;
-    const firstCard = autoDrawFor(room.game, whiteSid);
-    if (firstCard) {
-      room.drawn[whiteSid] = firstCard;
-      io.to(whiteSid).emit("card_drawn", { card: firstCard });
-    }
-    io.to(whiteSid).emit(
-      "available_cards",
-      buildAvailableCardsFromGame(room.game)
-    );
+    const cardChoices = smartDrawFor(room.game);
+    room.drawn[whiteSid] = { options: cardChoices, chosen: null };
+    io.to(whiteSid).emit("cards_drawn", { cards: cardChoices });
   });
 
-  // (Optional) You can keep this for backward-compat or remove it:
-  socket.on("draw_card", ({ roomId }) => {
-    // No-op in auto-draw mode, or keep legacy behavior:
+  socket.on("select_card", ({ roomId, card }) => {
+    // Player explicitly selects one of their drawn cards
     const room = rooms.get(roomId);
     if (!room) return;
-    const { game } = room;
-    const choice = autoDrawFor(game, socket.id);
-    if (!choice) return;
-    room.drawn[socket.id] = choice;
-    socket.emit("card_drawn", { card: choice });
+    const entry = room.drawn[socket.id];
+    if (!entry || !entry.options.includes(card)) return;
+    entry.chosen = card; // mark chosen
   });
 
   socket.on("make_move", ({ roomId, from, to }) => {
@@ -156,14 +144,18 @@ io.on("connection", (socket) => {
     if (turn !== playerColor)
       return socket.emit("invalid_move", "not-your-turn");
 
-    const drawnCard = drawn[socket.id] || null;
+    const cardEntry = drawn[socket.id];
+    if (!cardEntry || !cardEntry.chosen)
+      return socket.emit("invalid_move", "no-card-chosen");
+
+    const chosenCard = cardEntry.chosen;
     const piece = game.get(from);
     if (!piece) return socket.emit("invalid_move", "no-piece");
 
-    function isAllowedByCard(dCard, srcSquare, pType) {
-      if (!dCard) return false; // must have a drawn card
-      if (dCard.startsWith("pawn-")) {
-        return pType === "p" && srcSquare[0] === dCard.split("-")[1];
+    function isAllowedByCard(card, srcSquare, pType) {
+      if (!card) return false;
+      if (card.startsWith("pawn-")) {
+        return pType === "p" && srcSquare[0] === card.split("-")[1];
       }
       const map = {
         knight: "n",
@@ -172,10 +164,10 @@ io.on("connection", (socket) => {
         queen: "q",
         king: "k",
       };
-      return map[dCard] === pType;
+      return map[card] === pType;
     }
 
-    if (!isAllowedByCard(drawnCard, from, piece.type)) {
+    if (!isAllowedByCard(chosenCard, from, piece.type)) {
       return socket.emit("invalid_move", "card_restriction");
     }
 
@@ -185,10 +177,9 @@ io.on("connection", (socket) => {
 
     game.move({ from, to, promotion: "q" });
 
-    // consume mover's card
-    drawn[socket.id] = null;
+    // consume card
+    room.drawn[socket.id] = null;
 
-    // broadcast new state
     const fen = game.fen();
     const status = {
       isCheck: game.isCheck(),
@@ -197,18 +188,12 @@ io.on("connection", (socket) => {
     };
     io.to(roomId).emit("game_state", { fen, status, lastMove: { from, to } });
 
-    // If game over, don't draw for next player
     if (status.isCheckmate || status.isDraw) return;
 
-    // CHANGED: auto-draw for the next player immediately
     const nextSid = game.turn() === "w" ? players.white : players.black;
-    const nextCard = autoDrawFor(game, nextSid);
-    if (nextCard) {
-      drawn[nextSid] = nextCard;
-      io.to(nextSid).emit("card_drawn", { card: nextCard });
-    }
-    // Optional debug info
-    io.to(nextSid).emit("available_cards", buildAvailableCardsFromGame(game));
+    const nextChoices = smartDrawFor(game);
+    room.drawn[nextSid] = { options: nextChoices, chosen: null };
+    io.to(nextSid).emit("cards_drawn", { cards: nextChoices });
   });
 
   socket.on("resign", ({ roomId }) => {
