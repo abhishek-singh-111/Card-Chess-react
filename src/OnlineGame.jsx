@@ -7,7 +7,8 @@ import moveSelf from "./sounds/move-self.mp3";
 import captureMp3 from "./sounds/capture.mp3";
 import moveCheck from "./sounds/move-check.mp3";
 
-const SERVER_URL = process.env.REACT_APP_SERVER_URL || "https://card-chess.onrender.com";
+const SERVER_URL =
+  process.env.REACT_APP_SERVER_URL || "https://card-chess.onrender.com";
 
 // Sound effects
 const moveSound = new Audio(moveSelf);
@@ -73,9 +74,11 @@ export default function OnlineGame({ onExit }) {
   const [color, setColor] = useState(null); // 'w' | 'b'
   const [game, setGame] = useState(() => new Chess());
   const [gameFen, setGameFen] = useState(new Chess().fen());
-  const [drawnCard, setDrawnCard] = useState(null);
   const [highlightSquares, setHighlightSquares] = useState({});
   const [selectedFrom, setSelectedFrom] = useState(null);
+  // multi-card logic
+  const [options, setOptions] = useState([]); // 0-3 cards
+  const [selectedCard, setSelectedCard] = useState(null);
   const [gameOver, setGameOver] = useState(false);
   const [showResignConfirm, setShowResignConfirm] = useState(false);
   const [showGameOverModal, setShowGameOverModal] = useState(false);
@@ -108,7 +111,6 @@ export default function OnlineGame({ onExit }) {
       const g = new Chess(fen);
       setGame(g);
       setGameFen(fen);
-      setDrawnCard(null);
       setSelectedFrom(null);
       setHighlightSquares({});
       setGameOver(false);
@@ -118,14 +120,11 @@ export default function OnlineGame({ onExit }) {
       setBlackCaptured([]);
     });
 
-    s.on("card_drawn", ({ card }) => {
-      setDrawnCard(card);
-      setStatusText(
-        "Card drawn: " +
-          (card.startsWith?.("pawn-")
-            ? `Pawn ${card.split("-")[1].toUpperCase()}`
-            : card)
-      );
+    s.on("cards_drawn", ({ cards }) => {
+      // array from server
+      setOptions(cards);
+      setSelectedCard(null);
+      setStatusText("Select one card to use this turn.");
     });
 
     s.on("game_state", ({ fen, status, lastMove }) => {
@@ -183,7 +182,8 @@ export default function OnlineGame({ onExit }) {
 
       setGame(g);
       setGameFen(fen);
-      setDrawnCard(null);
+      setOptions([]);
+      setSelectedCard(null);
 
       if (status.isCheckmate) {
         setStatusText("Checkmate! Game over.");
@@ -282,22 +282,13 @@ export default function OnlineGame({ onExit }) {
     return styles;
   }
 
-  function isMoveAllowedByDrawnCard(srcSquare, pieceType) {
-    if (!drawnCard) return false;
-    if (drawnCard.startsWith("pawn-")) {
-      if (pieceType !== "p") return false;
-      const srcFile = srcSquare[0];
-      return srcFile === drawnCard.split("-")[1];
-    } else {
-      const map = {
-        knight: "n",
-        bishop: "b",
-        rook: "r",
-        queen: "q",
-        king: "k",
-      };
-      return map[drawnCard] === pieceType;
+  function isMoveAllowedByCard(card, srcSquare, pType) {
+    if (!card) return false;
+    if (card.startsWith("pawn-")) {
+      return pType === "p" && srcSquare[0] === card.split("-")[1];
     }
+    const map = { knight: "n", bishop: "b", rook: "r", queen: "q", king: "k" };
+    return map[card] === pType;
   }
 
   function performMoveIfValid(sourceSquare, targetSquare) {
@@ -307,11 +298,11 @@ export default function OnlineGame({ onExit }) {
       setStatusText("No piece at selected square.");
       return false;
     }
-    if (!isMoveAllowedByDrawnCard(sourceSquare, srcPiece.type)) {
+    if (!isMoveAllowedByCard(selectedCard, sourceSquare, srcPiece.type)) {
       setStatusText(
-        drawnCard
+        selectedCard
           ? "This piece is not allowed by the card."
-          : "Waiting for your card..."
+          : "Select a card first."
       );
       return false;
     }
@@ -327,20 +318,59 @@ export default function OnlineGame({ onExit }) {
       from: sourceSquare,
       to: targetSquare,
     });
-    setStatusText("Waiting for server...");
+    // after sending move:
+    setStatusText("Waiting for opponent...");
     setSelectedFrom(null);
     setHighlightSquares({});
     return true;
   }
 
+  // This constant renders the selectable cards with solid colored background
+  const choiceGrid = (
+    <div
+      style={{ display: "flex", gap: 12, alignItems: "center", height: 260 }}
+    >
+      {options.map((c) => {
+        const isPawn = c.startsWith("pawn-");
+        const bg = isPawn ? "#fde68a" : "#bfdbfe";
+        return (
+          <div
+            key={c}
+            onClick={() => {
+              setSelectedCard(c);
+              if (socketRef.current && roomId) {
+                socketRef.current.emit("select_card", { roomId, card: c });
+              }
+            }}
+            style={{
+              width: 170,
+              height: 260,
+              background: bg,
+              border: c === selectedCard ? "3px solid #00f" : "1px solid #ddd",
+              borderRadius: 12,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: "pointer",
+              boxSizing: "border-box",
+            }}
+          >
+            <CardSVG cardId={c} large={true} />
+          </div>
+        );
+      })}
+    </div>
+  );
+
+  /** Override: only allow move if selectedCard exists **/
   function onPieceDrop(sourceSquare, targetSquare) {
-    if (!roomId || !socketRef.current) return false;
-    if (!isMyTurn) {
-      setStatusText("It's not your turn.");
-      return false;
-    }
-    if (!drawnCard) {
-      setStatusText("Waiting for your card...");
+    if (
+      !roomId ||
+      !socketRef.current ||
+      !isMyTurn ||
+      !selectedCard ||
+      gameOver
+    ) {
       return false;
     }
     socketRef.current.emit("make_move", {
@@ -348,22 +378,27 @@ export default function OnlineGame({ onExit }) {
       from: sourceSquare,
       to: targetSquare,
     });
+    setStatusText("Waiting for opponent...");
     return true;
   }
 
   function onSquareClick(square) {
     if (gameOver) return;
+    if (!isMyTurn || !selectedCard) {
+      setStatusText("Select a card first.");
+      return;
+    }
     const piece = game.get(square);
     const turn = game.turn();
-    if (!drawnCard) {
-      setStatusText("Waiting for your card...");
+    if (!selectedCard) {
+      setStatusText("Select a card first.");
       return;
     }
     if (!selectedFrom) {
       if (
         piece &&
         piece.color === turn &&
-        isMoveAllowedByDrawnCard(square, piece.type)
+        isMoveAllowedByCard(selectedCard, square, piece.type)
       ) {
         setSelectedFrom(square);
         setHighlightSquares(getLegalMoveSquares(square));
@@ -380,7 +415,7 @@ export default function OnlineGame({ onExit }) {
       if (
         piece &&
         piece.color === turn &&
-        isMoveAllowedByDrawnCard(square, piece.type)
+        isMoveAllowedByCard(selectedCard, square, piece.type)
       ) {
         setSelectedFrom(square);
         setHighlightSquares(getLegalMoveSquares(square));
@@ -394,13 +429,6 @@ export default function OnlineGame({ onExit }) {
   function onSquareRightClick() {
     setSelectedFrom(null);
     setHighlightSquares({});
-  }
-
-  function getCardPrettyName(cardId) {
-    if (!cardId) return "—";
-    if (cardId.startsWith("pawn-"))
-      return `Pawn ${cardId.split("-")[1].toUpperCase()}`;
-    return cardId[0].toUpperCase() + cardId.slice(1);
   }
 
   function handleResign() {
@@ -456,13 +484,14 @@ export default function OnlineGame({ onExit }) {
   return (
     <>
       <div style={{ display: "flex", gap: 20, padding: 20 }}>
+        {/* LEFT SIDE */}
         <div>
           <h2>Online Match</h2>
           <div style={{ marginBottom: 6 }}>
             {statusText || (isMyTurn ? "Your turn" : "Opponent's turn")}
           </div>
           {/* Captured pieces by opponent */}
-          <div style={{ display: "flex", gap: 4 }}>
+          <div style={{ display: "flex", gap: 3 }}>
             {(color === "w" ? blackCaptured : whiteCaptured).map((t, idx) => (
               <img
                 key={idx}
@@ -484,7 +513,7 @@ export default function OnlineGame({ onExit }) {
           />
 
           {/* Captured pieces by me */}
-          <div style={{ display: "flex", gap: 4 }}>
+          <div style={{ display: "flex", gap: 3 }}>
             {(color === "w" ? whiteCaptured : blackCaptured).map((t, idx) => (
               <img
                 key={idx}
@@ -495,40 +524,47 @@ export default function OnlineGame({ onExit }) {
             ))}
           </div>
         </div>
-        <div style={{ width: 320 }}>
-          <h3>Card Deck</h3>
-          <div style={{ marginTop: 18 }}>
-            <div style={{ fontSize: 13, color: "#333", marginBottom: 6 }}>
-              Drawn Card
-            </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <div
-                style={{
-                  width: 170,
-                  height: 260,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                {drawnCard ? (
-                  <CardSVG cardId={drawnCard} large={true} />
-                ) : (
-                  <div style={{ color: "#777" }}>Waiting for your card…</div>
-                )}
-              </div>
-              <div>
-                <div style={{ fontWeight: 700 }}>
-                  {drawnCard ? getCardPrettyName(drawnCard) : "—"}
+
+        {/* RIGHT SIDE */}
+        <div style={{ width: 510 }}>
+          {/* Keep this div to align the h3 with the board top */}
+          <div
+            style={{ display: "flex", flexDirection: "column", marginTop: 80 }}
+          >
+            <h3 style={{ marginTop: 0 }}>Card Deck</h3>
+
+            {/* Card selection area */}
+            {isMyTurn && !gameOver ? (
+              options.length > 0 ? (
+                choiceGrid
+              ) : (
+                <div style={{ color: "#777" }}>Waiting for cards…</div>
+              )
+            ) : (
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <div
+                  style={{
+                    width: 300,
+                    height: 260,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    color: "#777",
+                  }}
+                >
+                  Waiting for your cards…
                 </div>
-                <div style={{ marginTop: 6, color: "#555", fontSize: 13 }}>
-                  {drawnCard
-                    ? "You must move this piece type this turn."
-                    : "The system will draw automatically when it's your turn."}
+                <div>
+                  <div style={{ fontWeight: 700 }}>—</div>
+                  <div style={{ marginTop: 6, color: "#555", fontSize: 13 }}>
+                    The system will draw automatically when it's your turn.
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
           </div>
+
+          {/* Resign and user color info */}
           <div style={{ marginTop: 18 }}>
             {!gameOver && (
               <button onClick={handleResign} style={{ marginRight: 8 }}>
@@ -536,10 +572,8 @@ export default function OnlineGame({ onExit }) {
               </button>
             )}
             <div style={{ marginTop: 12, color: "#666", fontSize: 15 }}>
-              <div>
-                <strong>Your color:</strong>{" "}
-                {color === "w" ? "White" : color === "b" ? "Black" : "—"}
-              </div>
+              <strong>Your color:</strong>{" "}
+              {color === "w" ? "White" : color === "b" ? "Black" : "—"}
             </div>
           </div>
         </div>
