@@ -6,7 +6,6 @@ import { io } from "socket.io-client";
 import moveSelf from "./sounds/move-self.mp3";
 import captureMp3 from "./sounds/capture.mp3";
 import moveCheck from "./sounds/move-check.mp3";
-import "./Play.css";
 
 const SERVER_URL = process.env.REACT_APP_SERVER_URL || 'http://localhost:4000';
 //const SERVER_URL = process.env.REACT_APP_SERVER_URL || "https://card-chess.onrender.com";
