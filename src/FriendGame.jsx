@@ -2,14 +2,15 @@
 import React, { useEffect, useState } from "react";
 import { io } from "socket.io-client";
 import OnlineGame from "./OnlineGame";
+import { useNavigate } from "react-router-dom";
 
 // Use deployed server or fallback to localhost
-const SERVER_URL = process.env.REACT_APP_SERVER_URL || 'http://localhost:4000';
-//const SERVER_URL = process.env.REACT_APP_SERVER_URL || "https://card-chess.onrender.com";
-
-const socket = io(SERVER_URL);
+//const SERVER_URL = process.env.REACT_APP_SERVER_URL || 'http://localhost:4000';
+const SERVER_URL = process.env.REACT_APP_SERVER_URL || "https://card-chess.onrender.com";
 
 export default function FriendGame({ onExit }) {
+  const [socket] = useState(() => io(SERVER_URL));
+  const navigate = useNavigate();
   const [step, setStep] = useState("menu"); // menu | creating | joining | waiting | playing
   const [roomId, setRoomId] = useState(null);
   const [gameProps, setGameProps] = useState(null);
@@ -36,6 +37,7 @@ export default function FriendGame({ onExit }) {
       socket.off("match_found");
       socket.off("room_not_found");
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // -------- UI States --------
@@ -56,7 +58,7 @@ export default function FriendGame({ onExit }) {
         <button onClick={() => setStep("joining")}>Join Game Room</button>
         <br />
         <br />
-        <button onClick={onExit}>Back</button>
+        <button onClick={() => navigate("/")}>Back</button>
       </div>
     );
   }
@@ -68,7 +70,7 @@ export default function FriendGame({ onExit }) {
         <p>Share this Room ID with your friend:</p>
         <strong>{roomId || "..."}</strong>
         <p>Waiting for friend to join...</p>
-        <button onClick={onExit}>Cancel</button>
+        <button onClick={() => navigate("/")}>Cancel</button>
       </div>
     );
   }
@@ -110,7 +112,7 @@ export default function FriendGame({ onExit }) {
   }
 
   if (step === "playing" && gameProps) {
-    return <OnlineGame {...gameProps} onExit={onExit} />;
+    return <OnlineGame {...gameProps} onExit={onExit}/>;
   }
 
   return null;

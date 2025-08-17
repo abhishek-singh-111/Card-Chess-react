@@ -1,5 +1,6 @@
 // src/OnlineGame.jsx
 import React, { useEffect, useRef, useState, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { Chess } from "chess.js";
 import { Chessboard } from "react-chessboard";
 import { io } from "socket.io-client";
@@ -7,8 +8,8 @@ import moveSelf from "./sounds/move-self.mp3";
 import captureMp3 from "./sounds/capture.mp3";
 import moveCheck from "./sounds/move-check.mp3";
 
-const SERVER_URL = process.env.REACT_APP_SERVER_URL || 'http://localhost:4000';
-//const SERVER_URL = process.env.REACT_APP_SERVER_URL || "https://card-chess.onrender.com";
+//const SERVER_URL = process.env.REACT_APP_SERVER_URL || 'http://localhost:4000';
+const SERVER_URL = process.env.REACT_APP_SERVER_URL || "https://card-chess.onrender.com";
 
 // Sound effects
 const moveSound = new Audio(moveSelf);
@@ -65,9 +66,9 @@ function CardSVG({ cardId, large = false }) {
   );
 }
 
-// export default function OnlineGame({ onExit }) {
-export default function OnlineGame({ onExit, socket: externalSocket, roomId: initialRoomId, color: initialColor, fen: initialFen }) {
+export default function OnlineGame({ socket: externalSocket, roomId: initialRoomId, color: initialColor, fen: initialFen }) {
   const socketRef = useRef(null);
+  const navigate = useNavigate();
 
   // core state
   const [statusText, setStatusText] = useState("Connecting...");
@@ -110,6 +111,7 @@ export default function OnlineGame({ onExit, socket: externalSocket, roomId: ini
       setGame(g);
       setGameFen(initialFen);
       prevFenRef.current = initialFen;
+      s.emit("request_initial_cards", { roomId: initialRoomId });
     } else {
       // --- Matchmaking mode ---
       s = io(SERVER_URL);
@@ -245,7 +247,7 @@ export default function OnlineGame({ onExit, socket: externalSocket, roomId: ini
 
     s.on("opponent_left", () => {
       setStatusText("Opponent left. Returning to menu.");
-      setTimeout(() => onExit(), 900);
+      setTimeout(() => navigate("/"), 900);
     });
 
     s.on("disconnect", () => setStatusText("Disconnected from server."));
@@ -660,7 +662,7 @@ export default function OnlineGame({ onExit, socket: externalSocket, roomId: ini
               <button
                 onClick={() => {
                   setShowGameOverModal(false);
-                  onExit();
+                  navigate("/");
                 }}
               >
                 Back to Menu
