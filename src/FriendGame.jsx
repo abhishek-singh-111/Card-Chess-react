@@ -4,8 +4,8 @@ import { io } from "socket.io-client";
 import OnlineGame from "./OnlineGame";
 
 // Use deployed server or fallback to localhost
-const SERVER_URL = process.env.REACT_APP_SERVER_URL || 'http://localhost:4000';
-//const SERVER_URL = process.env.REACT_APP_SERVER_URL || "https://card-chess.onrender.com";
+//const SERVER_URL = process.env.REACT_APP_SERVER_URL || 'http://localhost:4000';
+const SERVER_URL = process.env.REACT_APP_SERVER_URL || "https://card-chess.onrender.com";
 
 const socket = io(SERVER_URL);
 
