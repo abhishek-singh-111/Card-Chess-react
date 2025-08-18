@@ -5,6 +5,7 @@ import HomePage from "./pages/HomePage";
 import OnlineGame from "./OnlineGame";
 import FriendGame from "./FriendGame";
 import LocalGame from "./LocalGame";
+import AIGame from "./AIGame";
 
 export default function App() {
   return (
@@ -14,6 +15,7 @@ export default function App() {
         <Route path="/online" element={<OnlineGame />} />
         <Route path="/friend" element={<FriendGame />} />
         <Route path="/local" element={<LocalGame />} />
+        <Route path="/ai" element={<AIGame />} />
       </Routes>
     </BrowserRouter>
   );

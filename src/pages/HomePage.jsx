@@ -16,6 +16,9 @@ export default function HomePage() {
         <Link to="/friend">
           <button style={{ padding: '12px 20px' }}>Play with Friend (Online)</button>
         </Link>
+        <Link to="/ai">
+          <button style={{ padding: '12px 20px' }}>Play V/S Computer</button>
+        </Link>
       </div>
       <p style={{ marginTop: 24 }}>
         Open another browser/tab and select Play Online or Play with Friend to get matched.
