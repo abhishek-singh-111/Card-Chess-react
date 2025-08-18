@@ -8,10 +8,10 @@ import moveSelf from "./sounds/move-self.mp3";
 import captureMp3 from "./sounds/capture.mp3";
 import moveCheck from "./sounds/move-check.mp3";
 
-// Sound effects
 const moveSound = new Audio(moveSelf);
 const captureSound = new Audio(captureMp3);
 const checkSound = new Audio(moveCheck);
+const endSound = new Audio(moveCheck); // for checkmate/draw
 
 function CardSVG({ cardId, large = false }) {
   if (!cardId) return null;
@@ -83,22 +83,23 @@ function pickRandom(arr) {
 export default function AIGame() {
   const [game, setGame] = useState(() => new Chess());
   const [gameFen, setGameFen] = useState(new Chess().fen());
-  const [color] = useState(() => (Math.random() < 0.5 ? "w" : "b"));
-  const aiColor = color === "w" ? "b" : "w";
+  const [color, setColor] = useState(() => (Math.random() < 0.5 ? "w" : "b"));
   const [options, setOptions] = useState([]);
   const [selectedCard, setSelectedCard] = useState(null);
   const [selectedFrom, setSelectedFrom] = useState(null);
   const [highlightSquares, setHighlightSquares] = useState({});
   const [lastMoveSquares, setLastMoveSquares] = useState(null);
   const [statusText, setStatusText] = useState("Game Start");
-  const [whiteCaptured, setWhiteCaptured] = useState([]);
-  const [blackCaptured, setBlackCaptured] = useState([]);
+  const [capturedPieces, setCapturedPieces] = useState([]);
+  const [gameOver, setGameOver] = useState(false);
+  const [showGameOverModal, setShowGameOverModal] = useState(false);
+  const [gameOverMessage, setGameOverMessage] = useState("");
 
   const navigate = useNavigate();
 
   // Draw cards when turn changes
   useEffect(() => {
-    if (game.isGameOver()) return;
+    if (gameOver) return;
     if (game.turn() === color) {
       const avail = buildAvailableCards(game);
       const picks =
@@ -122,10 +123,33 @@ export default function AIGame() {
       setTimeout(doBotMove, 600);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gameFen, color]);
+  }, [gameFen, color, gameOver]);
 
   function isMyTurn() {
     return game.turn() === color;
+  }
+
+  function handleEndGameCheck(g) {
+    if (g.isCheckmate()) {
+      endSound.play();
+      setGameOver(true);
+      setGameOverMessage(
+        game.turn() === color ? "You lost by checkmate!" : "You won! Checkmate!"
+      );
+      setShowGameOverModal(true);
+      return true;
+    }
+    if (g.isDraw()) {
+      endSound.play();
+      setGameOver(true);
+      setGameOverMessage("Draw!");
+      setShowGameOverModal(true);
+      return true;
+    }
+    if (g.isCheck()) {
+      checkSound.play();
+    }
+    return false;
   }
 
   function getLegalMoveSquares(square) {
@@ -145,17 +169,14 @@ export default function AIGame() {
 
   function isMoveAllowedByCard(card, srcSquare, pType) {
     if (!card) return false;
-    if (card.startsWith("pawn-")) {
+    if (card.startsWith("pawn-"))
       return pType === "p" && srcSquare[0] === card.split("-")[1];
-    }
     const map = { knight: "n", bishop: "b", rook: "r", queen: "q", king: "k" };
     return map[card] === pType;
   }
 
   function onSquareClick(square) {
-    if (!isMyTurn() || !selectedCard) {
-      return;
-    }
+    if (!isMyTurn() || !selectedCard || gameOver) return;
     const g = new Chess(game.fen());
     const piece = g.get(square);
     if (!selectedFrom) {
@@ -174,7 +195,6 @@ export default function AIGame() {
       if (legal) {
         makePlayerMove(selectedFrom, square);
       } else {
-        // reset / perhaps select new
         setSelectedFrom(null);
         setHighlightSquares({});
       }
@@ -186,32 +206,32 @@ export default function AIGame() {
     const moveObj = g.move({ from, to, promotion: "q" });
 
     setLastMoveSquares({ from, to });
-    if (g.isCheck()) checkSound.play();
-    else moveSound.play();
 
-    // track capture
     if (moveObj && moveObj.captured) {
       captureSound.play();
-      if (aiColor === "w") {
-        // player is white, so AI lost a piece
-        setBlackCaptured((prev) => [...prev, moveObj.captured]);
-      } else {
-        setWhiteCaptured((prev) => [...prev, moveObj.captured]);
-      }
+      setCapturedPieces((prev) => [
+        ...prev,
+        { color: moveObj.color === "w" ? "b" : "w", type: moveObj.captured },
+      ]);
+    } else {
+      moveSound.play();
     }
 
     setGame(g);
     setGameFen(g.fen());
+    if (handleEndGameCheck(g)) {
+      return; // stops further UI state updates
+    }
     setSelectedFrom(null);
     setHighlightSquares({});
   }
 
   function onPieceDrop(src, dst) {
-    if (!isMyTurn() || !selectedCard) return false;
+    if (!isMyTurn() || !selectedCard || gameOver) return false;
     const g = new Chess(game.fen());
     const piece = g.get(src);
-    if (!piece) return false;
-    if (!isMoveAllowedByCard(selectedCard, src, piece.type)) return false;
+    if (!piece || !isMoveAllowedByCard(selectedCard, src, piece.type))
+      return false;
     const legal = g
       .moves({ square: src, verbose: true })
       .find((m) => m.to === dst);
@@ -221,24 +241,23 @@ export default function AIGame() {
   }
 
   function doBotMove() {
+    if (gameOver) return;
     const g = new Chess(game.fen());
     const avail = buildAvailableCards(g);
     const pool = avail.slice(0, 3);
     const botCard = pickRandom(pool);
     const moves = g.moves({ verbose: true });
     const legalMoves = moves.filter((m) => {
-      if (botCard.startsWith("pawn-")) {
+      if (botCard.startsWith("pawn-"))
         return m.piece === "p" && m.from[0] === botCard.split("-")[1];
-      } else {
-        const map = {
-          knight: "n",
-          bishop: "b",
-          rook: "r",
-          queen: "q",
-          king: "k",
-        };
-        return m.piece === map[botCard];
-      }
+      const map = {
+        knight: "n",
+        bishop: "b",
+        rook: "r",
+        queen: "q",
+        king: "k",
+      };
+      return m.piece === map[botCard];
     });
     const chosen = pickRandom(legalMoves.length ? legalMoves : moves);
     const moveObj = g.move({
@@ -247,21 +266,20 @@ export default function AIGame() {
       promotion: "q",
     });
     setLastMoveSquares({ from: chosen.from, to: chosen.to });
-    if (g.isCheck()) checkSound.play();
-    else moveSound.play();
 
-    // track capture
     if (moveObj && moveObj.captured) {
       captureSound.play();
-      if (color === "w") {
-        // player is white, so AI lost a piece
-        setBlackCaptured((prev) => [...prev, moveObj.captured]);
-      } else {
-        setWhiteCaptured((prev) => [...prev, moveObj.captured]);
-      }
+      setCapturedPieces((prev) => [
+        ...prev,
+        { color: moveObj.color === "w" ? "b" : "w", type: moveObj.captured },
+      ]);
+    } else {
+      moveSound.play();
     }
+
     setGame(g);
     setGameFen(g.fen());
+    if (handleEndGameCheck(g)) return;
     setStatusText("Your turn!");
   }
 
@@ -331,14 +349,16 @@ export default function AIGame() {
           <div style={{ marginBottom: 6 }}>{statusText}</div>
           {/* Captured pieces by AI */}
           <div style={{ display: "flex", gap: 3 }}>
-            {(color === "w" ? blackCaptured : whiteCaptured).map((t, i) => (
-              <img
-                key={i}
-                src={pieceImages[color === "w" ? "b" : "w"][t]}
-                alt=""
-                style={{ width: 24, height: 24 }}
-              />
-            ))}
+            {capturedPieces
+              .filter((p) => p.color === color) // pieces captured from opponent
+              .map((p, i) => (
+                <img
+                  key={i}
+                  src={pieceImages[p.color][p.type]}
+                  alt=""
+                  style={{ width: 24, height: 24 }}
+                />
+              ))}
           </div>
           <Chessboard
             position={gameFen}
@@ -350,14 +370,16 @@ export default function AIGame() {
           />
           {/* Captured pieces by you */}
           <div style={{ display: "flex", gap: 3 }}>
-            {(color === "w" ? whiteCaptured : blackCaptured).map((t, i) => (
-              <img
-                key={i}
-                src={pieceImages[color === "w" ? "w" : "b"][t]}
-                alt=""
-                style={{ width: 24, height: 24 }}
-              />
-            ))}
+            {capturedPieces
+              .filter((p) => p.color !== color) // pieces you lost
+              .map((p, i) => (
+                <img
+                  key={i}
+                  src={pieceImages[p.color][p.type]}
+                  alt=""
+                  style={{ width: 24, height: 24 }}
+                />
+              ))}
           </div>
         </div>
 
@@ -411,6 +433,58 @@ export default function AIGame() {
           </div>
         </div>
       </div>
+      {/* Game Over Modal */}
+      {showGameOverModal && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            width: "100%",
+            height: "100%",
+            background: "rgba(0,0,0,0.5)",
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            zIndex: 999,
+          }}
+        >
+          <div
+            style={{
+              background: "#fff",
+              padding: 32,
+              borderRadius: 12,
+              textAlign: "center",
+            }}
+          >
+            <h2>Game Over</h2>
+            <p>{gameOverMessage}</p>
+            <div style={{ marginTop: 20 }}>
+              <button
+                onClick={() => {
+                  // Reset everything
+                  const fresh = new Chess();
+                  setGame(fresh);
+                  setGameFen(fresh.fen());
+                  setCapturedPieces([]);
+                  setOptions([]);
+                  setSelectedCard(null);
+                  setSelectedFrom(null);
+                  setColor(Math.random() < 0.5 ? "w" : "b");
+                  setShowGameOverModal(false);
+                  setGameOver(false);
+                  // Next draw will trigger useEffect automatically
+                  setStatusText("New Game");
+                }}
+                style={{ marginRight: 12 }}
+              >
+                Play Again
+              </button>
+              <button onClick={() => navigate("/")}>Back to Menu</button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

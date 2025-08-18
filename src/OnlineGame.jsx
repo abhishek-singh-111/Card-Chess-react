@@ -8,7 +8,7 @@ import moveSelf from "./sounds/move-self.mp3";
 import captureMp3 from "./sounds/capture.mp3";
 import moveCheck from "./sounds/move-check.mp3";
 
-//const SERVER_URL = process.env.REACT_APP_SERVER_URL || 'http://localhost:4000';
+//const SERVER_URL = process.env.REACT_APP_SERVER_URL || "http://localhost:4000";
 const SERVER_URL = process.env.REACT_APP_SERVER_URL || "https://card-chess.onrender.com";
 
 // Sound effects
@@ -66,9 +66,17 @@ function CardSVG({ cardId, large = false }) {
   );
 }
 
-export default function OnlineGame({ socket: externalSocket, roomId: initialRoomId, color: initialColor, fen: initialFen }) {
+export default function OnlineGame({
+  socket: externalSocket,
+  roomId: initialRoomId,
+  color: initialColor,
+  fen: initialFen,
+}) {
   const socketRef = useRef(null);
   const navigate = useNavigate();
+
+  // Detect if in friend mode
+  const isFriendMode = !!externalSocket;
 
   // core state
   const [statusText, setStatusText] = useState("Connecting...");
@@ -88,6 +96,8 @@ export default function OnlineGame({ socket: externalSocket, roomId: initialRoom
   const [lastMoveSquares, setLastMoveSquares] = useState(null);
   const [whiteCaptured, setWhiteCaptured] = useState([]);
   const [blackCaptured, setBlackCaptured] = useState([]);
+  //const [waitingRematch, setWaitingRematch] = useState(false);
+  const [showRematchPrompt, setShowRematchPrompt] = useState(false);
   const prevFenRef = useRef(new Chess().fen());
 
   const isMyTurn = useMemo(() => {
@@ -102,11 +112,9 @@ export default function OnlineGame({ socket: externalSocket, roomId: initialRoom
       // --- Friend mode ---
       s = externalSocket;
       socketRef.current = s;
-
       setRoomId(initialRoomId);
       setColor(initialColor);
       setStatusText("Game started with friend.");
-
       const g = new Chess(initialFen);
       setGame(g);
       setGameFen(initialFen);
@@ -116,13 +124,12 @@ export default function OnlineGame({ socket: externalSocket, roomId: initialRoom
       // --- Matchmaking mode ---
       s = io(SERVER_URL);
       socketRef.current = s;
-
       s.on("connect", () => {
         setStatusText("Connected. Finding match...");
         s.emit("find_game");
       });
     }
-    
+
     s.on("waiting", () => setStatusText("Waiting for opponent..."));
 
     s.on("match_found", ({ roomId: rid, color: col, fen }) => {
@@ -252,29 +259,66 @@ export default function OnlineGame({ socket: externalSocket, roomId: initialRoom
 
     s.on("disconnect", () => setStatusText("Disconnected from server."));
 
-    // UPDATED gameOver listener with personalized resign handling
     s.on("gameOver", ({ reason, resignedId, message }) => {
       let finalMsg = "";
-
       if (reason === "resign") {
-        const resignedIsMe = resignedId === socketRef.current.id;
-        console.log(resignedIsMe + " " + color);
-
-        if (resignedIsMe) {
-          finalMsg = `You resigned. Opponent wins.`;
-        } else {
-          finalMsg = `Opponent resigned. You win!`;
-        }
-      } else if (message) {
-        finalMsg = message;
+        finalMsg =
+          resignedId === socketRef.current.id
+            ? "You resigned. Opponent wins."
+            : "Opponent resigned. You win!";
       } else {
-        finalMsg = "Game over.";
+        finalMsg = message || "Game over.";
       }
-
+      endSound.play();
       setGameOverMessage(finalMsg);
       setShowGameOverModal(true);
       setGameOver(true);
     });
+
+    // NEW: Rematch handlers (friend mode)
+    if (isFriendMode) {
+      console.log("Inside Friend Mode handlers");
+
+      s.on("rematch_request", ({ roomId: reqRoom }) => {
+        // hide the original gameOver modal
+        console.log("Inside rematch_request handler");
+        setShowGameOverModal(false);
+        setGameOver(false);
+        setShowRematchPrompt(true);
+      });
+
+      s.on("rematch_response", ({ accepted, roomId: reqRoom }) => {
+        if (accepted) {
+          // Create a fresh Chess instance
+          const g = new Chess();
+          setGame(g);
+          setGameFen(g.fen());
+          prevFenRef.current = g.fen();
+          // Reset UI state
+          setRoomId(reqRoom); // still same id
+          setWhiteCaptured([]);
+          setBlackCaptured([]);
+          setOptions([]);
+          setSelectedCard(null);
+          setSelectedFrom(null);
+          setGameOver(false);
+          setShowGameOverModal(false);
+          setShowRematchPrompt(false);
+
+          // Keep same color from previous game
+          setColor((prevColor) => prevColor);
+
+          setStatusText("Rematch started!");
+          console.log("roomId:", reqRoom);
+
+          // Ask server to send initial cards to white
+          s.emit("request_initial_cards", { roomId: reqRoom });
+        } else {
+          alert("Opponent declined rematch.");
+          navigate("/");
+        }
+      });
+    }
 
     return () => {
       if (!externalSocket) {
@@ -362,6 +406,7 @@ export default function OnlineGame({ socket: externalSocket, roomId: initialRoom
             onClick={() => {
               setSelectedCard(c);
               if (socketRef.current && roomId) {
+                console.log("Trying to select card", c, "roomId:", roomId);
                 socketRef.current.emit("select_card", { roomId, card: c });
               }
             }}
@@ -659,15 +704,84 @@ export default function OnlineGame({ socket: externalSocket, roomId: initialRoom
             <h3>Game Over</h3>
             <p>{gameOverMessage}</p>
             <div style={{ marginTop: 12 }}>
-              <button
-                onClick={() => {
-                  setShowGameOverModal(false);
-                  navigate("/");
-                }}
-              >
-                Back to Menu
-              </button>
+              {isFriendMode ? (
+                <>
+                  <button
+                    onClick={() => {
+                      setShowGameOverModal(false);
+                      //setWaitingRematch(true);
+                      socketRef.current.emit("rematch_request", { roomId });
+                    }}
+                    style={{ marginRight: 8 }}
+                  >
+                    Rematch
+                  </button>
+                  <button onClick={() => navigate("/")}>Back to Menu</button>
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={() => {
+                      setShowGameOverModal(false);
+                      setStatusText("Searching new opponent...");
+                      socketRef.current.emit("find_game");
+                    }}
+                    style={{ marginRight: 8 }}
+                  >
+                    Find New Opponent
+                  </button>
+                  <button onClick={() => navigate("/")}>Back to Menu</button>
+                </>
+              )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {showRematchPrompt && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <div
+            style={{
+              background: "#fff",
+              padding: 20,
+              borderRadius: 8,
+              minWidth: 300,
+            }}
+          >
+            <h3>Rematch?</h3>
+            <p>Your opponent wants to play again.</p>
+            <button
+              onClick={() => {
+                socketRef.current.emit("rematch_response", {
+                  roomId,
+                  accepted: true,
+                });
+                setShowRematchPrompt(false);
+              }}
+              style={{ marginRight: 8 }}
+            >
+              Accept
+            </button>
+            <button
+              onClick={() => {
+                socketRef.current.emit("rematch_response", {
+                  roomId,
+                  accepted: false,
+                });
+                setShowRematchPrompt(false);
+              }}
+            >
+              Decline
+            </button>
           </div>
         </div>
       )}
