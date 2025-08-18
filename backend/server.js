@@ -47,7 +47,6 @@ function smartDrawFor(g) {
 }
 
 io.on("connection", (socket) => {
-  console.log("connected", socket.id);
 
   socket.on("find_game", () => {
     if (waiting.length > 0) {
@@ -205,7 +204,7 @@ io.on("connection", (socket) => {
       resignedId: socket.id,
     });
 
-    rooms.delete(roomId);
+    //rooms.delete(roomId);
   });
 
   socket.on("request_initial_cards", ({ roomId }) => {
@@ -214,6 +213,45 @@ io.on("connection", (socket) => {
   const entry = room.drawn[socket.id];
   if (entry && entry.options) {
     io.to(socket.id).emit("cards_drawn", { cards: entry.options });
+  }
+});
+
+// Handle rematch request from one of the players
+socket.on("rematch_request", ({ roomId }) => {
+  const room = rooms.get(roomId);
+  
+  if (!room) return;
+
+  // Send prompt to the OTHER player
+  const otherId =
+    room.players.white === socket.id
+      ? room.players.black
+      : room.players.white;
+      
+  if (otherId) {
+    io.to(otherId).emit("rematch_request", { roomId }); 
+  }
+});
+
+// Handle response to rematch (accept or reject)
+socket.on("rematch_response", ({ roomId, accepted }) => {
+  const room = rooms.get(roomId);
+  if (!room) return;
+
+  // Send back acceptance boolean to both players
+  io.to(roomId).emit("rematch_response", { accepted, roomId });
+
+  if (accepted) {
+    // Reset the room's Chess game
+    const newGame = new Chess();
+    room.game = newGame;
+    room.drawn = {};
+
+    // Redraw cards for white to start
+    const whiteSid = room.players.white;
+    const cardChoices = smartDrawFor(newGame);
+    room.drawn[whiteSid] = { options: cardChoices, chosen: null };
+    io.to(whiteSid).emit("cards_drawn", { cards: cardChoices });
   }
 });
 
