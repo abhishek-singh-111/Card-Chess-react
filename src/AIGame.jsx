@@ -134,7 +134,7 @@ export default function AIGame() {
       endSound.play();
       setGameOver(true);
       setGameOverMessage(
-        game.turn() === color ? "You lost by checkmate!" : "You won! Checkmate!"
+        game.turn() === color ? "You won! Checkmate!" : "You lost by checkmate!"
       );
       setShowGameOverModal(true);
       return true;
