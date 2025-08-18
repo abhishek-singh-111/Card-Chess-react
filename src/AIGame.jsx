@@ -84,13 +84,15 @@ export default function AIGame() {
   const [game, setGame] = useState(() => new Chess());
   const [gameFen, setGameFen] = useState(new Chess().fen());
   const [color] = useState(() => (Math.random() < 0.5 ? "w" : "b"));
+  const aiColor = color === "w" ? "b" : "w";
   const [options, setOptions] = useState([]);
   const [selectedCard, setSelectedCard] = useState(null);
-
   const [selectedFrom, setSelectedFrom] = useState(null);
   const [highlightSquares, setHighlightSquares] = useState({});
   const [lastMoveSquares, setLastMoveSquares] = useState(null);
   const [statusText, setStatusText] = useState("Game Start");
+  const [whiteCaptured, setWhiteCaptured] = useState([]);
+  const [blackCaptured, setBlackCaptured] = useState([]);
 
   const navigate = useNavigate();
 
@@ -181,13 +183,22 @@ export default function AIGame() {
 
   function makePlayerMove(from, to) {
     const g = new Chess(game.fen());
-    g.move({ from, to, promotion: "q" });
+    const moveObj = g.move({ from, to, promotion: "q" });
 
     setLastMoveSquares({ from, to });
     if (g.isCheck()) checkSound.play();
-    if (g.isCapture) {
+    else moveSound.play();
+
+    // track capture
+    if (moveObj && moveObj.captured) {
       captureSound.play();
-    } else moveSound.play();
+      if (aiColor === "w") {
+        // player is white, so AI lost a piece
+        setBlackCaptured((prev) => [...prev, moveObj.captured]);
+      } else {
+        setWhiteCaptured((prev) => [...prev, moveObj.captured]);
+      }
+    }
 
     setGame(g);
     setGameFen(g.fen());
@@ -230,10 +241,25 @@ export default function AIGame() {
       }
     });
     const chosen = pickRandom(legalMoves.length ? legalMoves : moves);
-    g.move({ from: chosen.from, to: chosen.to, promotion: "q" });
+    const moveObj = g.move({
+      from: chosen.from,
+      to: chosen.to,
+      promotion: "q",
+    });
     setLastMoveSquares({ from: chosen.from, to: chosen.to });
     if (g.isCheck()) checkSound.play();
     else moveSound.play();
+
+    // track capture
+    if (moveObj && moveObj.captured) {
+      captureSound.play();
+      if (color === "w") {
+        // player is white, so AI lost a piece
+        setBlackCaptured((prev) => [...prev, moveObj.captured]);
+      } else {
+        setWhiteCaptured((prev) => [...prev, moveObj.captured]);
+      }
+    }
     setGame(g);
     setGameFen(g.fen());
     setStatusText("Your turn!");
@@ -248,6 +274,25 @@ export default function AIGame() {
     }
     return styles;
   }
+
+  const pieceImages = {
+    w: {
+      p: "https://chessboardjs.com/img/chesspieces/wikipedia/wP.png",
+      n: "https://chessboardjs.com/img/chesspieces/wikipedia/wN.png",
+      b: "https://chessboardjs.com/img/chesspieces/wikipedia/wB.png",
+      r: "https://chessboardjs.com/img/chesspieces/wikipedia/wR.png",
+      q: "https://chessboardjs.com/img/chesspieces/wikipedia/wQ.png",
+      k: "https://chessboardjs.com/img/chesspieces/wikipedia/wK.png",
+    },
+    b: {
+      p: "https://chessboardjs.com/img/chesspieces/wikipedia/bP.png",
+      n: "https://chessboardjs.com/img/chesspieces/wikipedia/bN.png",
+      b: "https://chessboardjs.com/img/chesspieces/wikipedia/bB.png",
+      r: "https://chessboardjs.com/img/chesspieces/wikipedia/bR.png",
+      q: "https://chessboardjs.com/img/chesspieces/wikipedia/bQ.png",
+      k: "https://chessboardjs.com/img/chesspieces/wikipedia/bK.png",
+    },
+  };
 
   const choiceGrid = (
     <div style={{ display: "flex", gap: 12, height: 260 }}>
@@ -284,7 +329,17 @@ export default function AIGame() {
         <div>
           <h2>AI Match</h2>
           <div style={{ marginBottom: 6 }}>{statusText}</div>
-
+          {/* Captured pieces by AI */}
+          <div style={{ display: "flex", gap: 3 }}>
+            {(color === "w" ? blackCaptured : whiteCaptured).map((t, i) => (
+              <img
+                key={i}
+                src={pieceImages[color === "w" ? "b" : "w"][t]}
+                alt=""
+                style={{ width: 24, height: 24 }}
+              />
+            ))}
+          </div>
           <Chessboard
             position={gameFen}
             boardOrientation={color === "w" ? "white" : "black"}
@@ -293,6 +348,17 @@ export default function AIGame() {
             onPieceDrop={(src, dst) => onPieceDrop(src, dst)}
             onSquareClick={onSquareClick}
           />
+          {/* Captured pieces by you */}
+          <div style={{ display: "flex", gap: 3 }}>
+            {(color === "w" ? whiteCaptured : blackCaptured).map((t, i) => (
+              <img
+                key={i}
+                src={pieceImages[color === "w" ? "w" : "b"][t]}
+                alt=""
+                style={{ width: 24, height: 24 }}
+              />
+            ))}
+          </div>
         </div>
 
         {/* RIGHT SIDE just like OnlineGame (but no resign, only deck) */}
