@@ -6,9 +6,12 @@ import OnlineGame from "./OnlineGame";
 import FriendGame from "./FriendGame";
 import LocalGame from "./LocalGame";
 import AIGame from "./AIGame";
+import { ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 
 export default function App() {
   return (
+    <>
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<HomePage />} />
@@ -18,5 +21,7 @@ export default function App() {
         <Route path="/ai" element={<AIGame />} />
       </Routes>
     </BrowserRouter>
+    <ToastContainer position="bottom-right" autoClose={3000} />
+    </>
   );
 }

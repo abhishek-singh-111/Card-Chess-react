@@ -4,12 +4,14 @@ import { useNavigate } from "react-router-dom";
 import { Chess } from "chess.js";
 import { Chessboard } from "react-chessboard";
 import { io } from "socket.io-client";
+import { toast } from "react-toastify";
 import moveSelf from "./sounds/move-self.mp3";
 import captureMp3 from "./sounds/capture.mp3";
 import moveCheck from "./sounds/move-check.mp3";
 
 //const SERVER_URL = process.env.REACT_APP_SERVER_URL || "http://localhost:4000";
-const SERVER_URL = process.env.REACT_APP_SERVER_URL || "https://card-chess.onrender.com";
+const SERVER_URL =
+  process.env.REACT_APP_SERVER_URL || "https://card-chess.onrender.com";
 
 // Sound effects
 const moveSound = new Audio(moveSelf);
@@ -86,8 +88,7 @@ export default function OnlineGame({
   const [gameFen, setGameFen] = useState(new Chess().fen());
   const [highlightSquares, setHighlightSquares] = useState({});
   const [selectedFrom, setSelectedFrom] = useState(null);
-  // multi-card logic
-  const [options, setOptions] = useState([]); // 0-3 cards
+  const [options, setOptions] = useState([]);
   const [selectedCard, setSelectedCard] = useState(null);
   const [gameOver, setGameOver] = useState(false);
   const [showResignConfirm, setShowResignConfirm] = useState(false);
@@ -96,7 +97,6 @@ export default function OnlineGame({
   const [lastMoveSquares, setLastMoveSquares] = useState(null);
   const [whiteCaptured, setWhiteCaptured] = useState([]);
   const [blackCaptured, setBlackCaptured] = useState([]);
-  //const [waitingRematch, setWaitingRematch] = useState(false);
   const [showRematchPrompt, setShowRematchPrompt] = useState(false);
   const prevFenRef = useRef(new Chess().fen());
 
@@ -252,11 +252,6 @@ export default function OnlineGame({
       setHighlightSquares({});
     });
 
-    s.on("opponent_left", () => {
-      setStatusText("Opponent left. Returning to menu.");
-      setTimeout(() => navigate("/"), 900);
-    });
-
     s.on("disconnect", () => setStatusText("Disconnected from server."));
 
     s.on("gameOver", ({ reason, resignedId, message }) => {
@@ -277,14 +272,33 @@ export default function OnlineGame({
 
     // NEW: Rematch handlers (friend mode)
     if (isFriendMode) {
-      console.log("Inside Friend Mode handlers");
-
       s.on("rematch_request", ({ roomId: reqRoom }) => {
         // hide the original gameOver modal
-        console.log("Inside rematch_request handler");
         setShowGameOverModal(false);
         setGameOver(false);
         setShowRematchPrompt(true);
+      });
+
+      s.on("rematch_prompt", ({ roomId: reqRoom }) => {
+        // hide the original gameOver modal
+        setGameOver(false);
+        setGameOverMessage("Waiting for rematch response...");
+      });
+
+      s.on("return_home", () => {
+        navigate("/");
+        // else do nothing, Friend Mode handles manually!
+      });
+
+      s.on("rematch_declined", () => {
+        toast.info("Opponent declined rematch, redirecting to main menu");
+        setTimeout(() => navigate("/"), 4000);
+      });
+
+      s.on("opponent_left", () => {
+        setShowGameOverModal(false);
+        toast.info("Opponent left the room, redirecting to main menu");
+        setTimeout(() => navigate("/"), 4000);
       });
 
       s.on("rematch_response", ({ accepted, roomId: reqRoom }) => {
@@ -304,17 +318,12 @@ export default function OnlineGame({
           setGameOver(false);
           setShowGameOverModal(false);
           setShowRematchPrompt(false);
-
           // Keep same color from previous game
           setColor((prevColor) => prevColor);
-
           setStatusText("Rematch started!");
-          console.log("roomId:", reqRoom);
-
           // Ask server to send initial cards to white
           s.emit("request_initial_cards", { roomId: reqRoom });
         } else {
-          alert("Opponent declined rematch.");
           navigate("/");
         }
       });
@@ -406,7 +415,6 @@ export default function OnlineGame({
             onClick={() => {
               setSelectedCard(c);
               if (socketRef.current && roomId) {
-                console.log("Trying to select card", c, "roomId:", roomId);
                 socketRef.current.emit("select_card", { roomId, card: c });
               }
             }}
@@ -708,7 +716,6 @@ export default function OnlineGame({
                 <>
                   <button
                     onClick={() => {
-                      setShowGameOverModal(false);
                       //setWaitingRematch(true);
                       socketRef.current.emit("rematch_request", { roomId });
                     }}
@@ -716,7 +723,13 @@ export default function OnlineGame({
                   >
                     Rematch
                   </button>
-                  <button onClick={() => navigate("/")}>Back to Menu</button>
+                  <button
+                    onClick={() => {
+                      socketRef.current.emit("end_friend_match", { roomId });
+                    }}
+                  >
+                    Back to Menu
+                  </button>
                 </>
               ) : (
                 <>
@@ -730,7 +743,14 @@ export default function OnlineGame({
                   >
                     Find New Opponent
                   </button>
-                  <button onClick={() => navigate("/")}>Back to Menu</button>
+                  <button
+                    onClick={() => {
+                      socketRef.current.emit("leave_match", { roomId });
+                      navigate("/");
+                    }}
+                  >
+                    Back to Menu
+                  </button>
                 </>
               )}
             </div>
