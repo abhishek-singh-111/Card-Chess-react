@@ -207,6 +207,18 @@ io.on("connection", (socket) => {
     //rooms.delete(roomId);
   });
 
+  socket.on("leave_match", ({ roomId }) => {
+  const room = rooms.get(roomId);
+  if (!room) return;
+  // Remove this player from the room, but DO NOT delete the entire room if another player remains
+  if (room.players.white === socket.id) {
+    room.players.white = null;
+  } else if (room.players.black === socket.id) {
+    room.players.black = null;
+  }
+  socket.leave(roomId);
+});
+
   socket.on("request_initial_cards", ({ roomId }) => {
   const room = rooms.get(roomId);
   if (!room) return;
@@ -229,6 +241,7 @@ socket.on("rematch_request", ({ roomId }) => {
       : room.players.white;
       
   if (otherId) {
+    io.to(socket.id).emit("rematch_prompt", { roomId });
     io.to(otherId).emit("rematch_request", { roomId }); 
   }
 });
@@ -238,21 +251,44 @@ socket.on("rematch_response", ({ roomId, accepted }) => {
   const room = rooms.get(roomId);
   if (!room) return;
 
-  // Send back acceptance boolean to both players
-  io.to(roomId).emit("rematch_response", { accepted, roomId });
+  const requester =
+    socket.id === room.players.white ? room.players.black : room.players.white;
 
   if (accepted) {
     // Reset the room's Chess game
     const newGame = new Chess();
     room.game = newGame;
     room.drawn = {};
-
+    // Send back acceptance boolean to both players
+    io.to(roomId).emit("rematch_response", { accepted, roomId });
     // Redraw cards for white to start
     const whiteSid = room.players.white;
     const cardChoices = smartDrawFor(newGame);
     room.drawn[whiteSid] = { options: cardChoices, chosen: null };
     io.to(whiteSid).emit("cards_drawn", { cards: cardChoices });
+  } else {
+   io.to(requester).emit("rematch_declined");
+   // Also return both to menu
+   io.to(socket.id).emit("return_home");
+   rooms.delete(roomId);
   }
+});
+
+socket.on("end_friend_match", ({ roomId }) => {
+  const room = rooms.get(roomId);
+  if (!room) return;
+  if (!roomId.startsWith("friend-")) return;
+
+  const other = room.players.white === socket.id
+    ? room.players.black
+    : room.players.white;
+
+  if (other) {
+    io.to(other).emit("opponent_left");
+  }
+
+  io.to(socket.id).emit("return_home"); // immediate back for the one who clicked
+  rooms.delete(roomId);
 });
 
   socket.on("disconnect", () => {
@@ -263,11 +299,6 @@ socket.on("rematch_response", ({ roomId, accepted }) => {
         room.players.white === socket.id ||
         room.players.black === socket.id
       ) {
-        const other =
-          room.players.white === socket.id
-            ? room.players.black
-            : room.players.white;
-        if (other) io.to(other).emit("opponent_left");
         rooms.delete(roomId);
       }
     }
