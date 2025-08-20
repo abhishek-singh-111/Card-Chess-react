@@ -85,7 +85,6 @@ export default function AIGame() {
   const [gameFen, setGameFen] = useState(new Chess().fen());
   const [color, setColor] = useState(() => (Math.random() < 0.5 ? "w" : "b"));
   const [options, setOptions] = useState([]);
-  const [selectedCard, setSelectedCard] = useState(null);
   const [selectedFrom, setSelectedFrom] = useState(null);
   const [highlightSquares, setHighlightSquares] = useState({});
   const [lastMoveSquares, setLastMoveSquares] = useState(null);
@@ -114,12 +113,10 @@ export default function AIGame() {
               return chosen;
             })();
       setOptions(picks);
-      setSelectedCard(null);
       setStatusText("Your turn — pick a card");
     } else {
       setStatusText("AI thinking...");
       setOptions([]);
-      setSelectedCard(null);
       setTimeout(doBotMove, 600);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -167,23 +164,33 @@ export default function AIGame() {
     return styles;
   }
 
-  function isMoveAllowedByCard(card, srcSquare, pType) {
-    if (!card) return false;
-    if (card.startsWith("pawn-"))
-      return pType === "p" && srcSquare[0] === card.split("-")[1];
-    const map = { knight: "n", bishop: "b", rook: "r", queen: "q", king: "k" };
-    return map[card] === pType;
+  function isMoveAllowedByAnyCard(square, pieceType) {
+    if (!options.length) return false;
+    if (pieceType === "p") {
+      const file = square[0]; // 'a'..'h'
+      return options.some((op) => op === "pawn-" + file);
+    } else {
+      const map = {
+        n: "knight",
+        b: "bishop",
+        r: "rook",
+        q: "queen",
+        k: "king",
+      };
+      return options.includes(map[pieceType]);
+    }
   }
 
   function onSquareClick(square) {
-    if (!isMyTurn() || !selectedCard || gameOver) return;
+    if (!isMyTurn() || gameOver) return;
     const g = new Chess(game.fen());
     const piece = g.get(square);
+
     if (!selectedFrom) {
       if (
         piece &&
         piece.color === color &&
-        isMoveAllowedByCard(selectedCard, square, piece.type)
+        isMoveAllowedByAnyCard(square, piece.type)
       ) {
         setSelectedFrom(square);
         setHighlightSquares(getLegalMoveSquares(square));
@@ -227,15 +234,17 @@ export default function AIGame() {
   }
 
   function onPieceDrop(src, dst) {
-    if (!isMyTurn() || !selectedCard || gameOver) return false;
+    if (!isMyTurn() || gameOver) return false;
     const g = new Chess(game.fen());
     const piece = g.get(src);
-    if (!piece || !isMoveAllowedByCard(selectedCard, src, piece.type))
-      return false;
+    if (!piece || piece.color !== color) return false;
+    if (!isMoveAllowedByAnyCard(src, piece.type)) return false;
+
     const legal = g
       .moves({ square: src, verbose: true })
       .find((m) => m.to === dst);
     if (!legal) return false;
+
     makePlayerMove(src, dst);
     return true;
   }
@@ -320,12 +329,10 @@ export default function AIGame() {
         return (
           <div
             key={c}
-            onClick={() => setSelectedCard(c)}
             style={{
               width: 170,
               height: 260,
               background: bg,
-              border: c === selectedCard ? "3px solid #00f" : "1px solid #ddd",
               borderRadius: 12,
               display: "flex",
               alignItems: "center",
@@ -468,7 +475,6 @@ export default function AIGame() {
                   setGameFen(fresh.fen());
                   setCapturedPieces([]);
                   setOptions([]);
-                  setSelectedCard(null);
                   setSelectedFrom(null);
                   setColor(Math.random() < 0.5 ? "w" : "b");
                   setShowGameOverModal(false);

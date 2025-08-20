@@ -10,8 +10,7 @@ import captureMp3 from "./sounds/capture.mp3";
 import moveCheck from "./sounds/move-check.mp3";
 
 //const SERVER_URL = process.env.REACT_APP_SERVER_URL || "http://localhost:4000";
-const SERVER_URL =
-  process.env.REACT_APP_SERVER_URL || "https://card-chess.onrender.com";
+const SERVER_URL = process.env.REACT_APP_SERVER_URL || "https://card-chess.onrender.com";
 
 // Sound effects
 const moveSound = new Audio(moveSelf);
@@ -89,7 +88,6 @@ export default function OnlineGame({
   const [highlightSquares, setHighlightSquares] = useState({});
   const [selectedFrom, setSelectedFrom] = useState(null);
   const [options, setOptions] = useState([]);
-  const [selectedCard, setSelectedCard] = useState(null);
   const [gameOver, setGameOver] = useState(false);
   const [showResignConfirm, setShowResignConfirm] = useState(false);
   const [showGameOverModal, setShowGameOverModal] = useState(false);
@@ -97,6 +95,7 @@ export default function OnlineGame({
   const [lastMoveSquares, setLastMoveSquares] = useState(null);
   const [whiteCaptured, setWhiteCaptured] = useState([]);
   const [blackCaptured, setBlackCaptured] = useState([]);
+  const [isSearching, setIsSearching] = useState(true);
   const [showRematchPrompt, setShowRematchPrompt] = useState(false);
   const prevFenRef = useRef(new Chess().fen());
 
@@ -126,13 +125,18 @@ export default function OnlineGame({
       socketRef.current = s;
       s.on("connect", () => {
         setStatusText("Connected. Finding match...");
+        setIsSearching(true);
         s.emit("find_game");
       });
     }
 
-    s.on("waiting", () => setStatusText("Waiting for opponent..."));
+    s.on("waiting", () => {
+      setIsSearching(true);
+      setStatusText("Waiting for opponent...");
+    });
 
     s.on("match_found", ({ roomId: rid, color: col, fen }) => {
+      setIsSearching(false);
       setRoomId(rid);
       setColor(col);
       setStatusText("Matched! You are " + (col === "w" ? "White" : "Black"));
@@ -151,8 +155,9 @@ export default function OnlineGame({
     s.on("cards_drawn", ({ cards }) => {
       // array from server
       setOptions(cards);
-      setSelectedCard(null);
-      setStatusText("Select one card to use this turn.");
+      setStatusText(
+        "Your turn: move any piece that matches one of your cards."
+      );
     });
 
     s.on("game_state", ({ fen, status, lastMove }) => {
@@ -211,7 +216,6 @@ export default function OnlineGame({
       setGame(g);
       setGameFen(fen);
       setOptions([]);
-      setSelectedCard(null);
 
       if (status.isCheckmate) {
         setStatusText("Checkmate! Game over.");
@@ -224,7 +228,7 @@ export default function OnlineGame({
         setGameOver(false);
       } else {
         setStatusText(
-          isMyTurn ? "Waiting for your card..." : "Opponent's turn"
+          isMyTurn ? "Waiting for your cards..." : "Opponent's turn"
         );
         setGameOver(false);
       }
@@ -313,8 +317,9 @@ export default function OnlineGame({
           setWhiteCaptured([]);
           setBlackCaptured([]);
           setOptions([]);
-          setSelectedCard(null);
           setSelectedFrom(null);
+          setHighlightSquares({});
+          setLastMoveSquares(null);
           setGameOver(false);
           setShowGameOverModal(false);
           setShowRematchPrompt(false);
@@ -330,12 +335,13 @@ export default function OnlineGame({
     }
 
     return () => {
+      s.off("opponent_left");
       if (!externalSocket) {
         s.disconnect();
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [navigate, externalSocket]);
 
   function getLegalMoveSquares(square) {
     const moves = game.moves({ square, verbose: true }) || [];
@@ -367,6 +373,11 @@ export default function OnlineGame({
     return map[card] === pType;
   }
 
+  function isMoveAllowedByAnyCard(cards, srcSquare, pType) {
+    if (!cards || cards.length === 0) return false;
+    return cards.some((c) => isMoveAllowedByCard(c, srcSquare, pType));
+  }
+
   function performMoveIfValid(sourceSquare, targetSquare) {
     if (gameOver) return false;
     const srcPiece = game.get(sourceSquare);
@@ -374,14 +385,12 @@ export default function OnlineGame({
       setStatusText("No piece at selected square.");
       return false;
     }
-    if (!isMoveAllowedByCard(selectedCard, sourceSquare, srcPiece.type)) {
-      setStatusText(
-        selectedCard
-          ? "This piece is not allowed by the card."
-          : "Select a card first."
-      );
+
+    if (!isMoveAllowedByAnyCard(options, sourceSquare, srcPiece.type)) {
+      setStatusText("That piece isn't allowed by your current cards.");
       return false;
     }
+
     const moves = game.moves({ square: sourceSquare, verbose: true }) || [];
     const chosen = moves.find((m) => m.to === targetSquare);
     if (!chosen) {
@@ -412,17 +421,10 @@ export default function OnlineGame({
         return (
           <div
             key={c}
-            onClick={() => {
-              setSelectedCard(c);
-              if (socketRef.current && roomId) {
-                socketRef.current.emit("select_card", { roomId, card: c });
-              }
-            }}
             style={{
               width: 170,
               height: 260,
               background: bg,
-              border: c === selectedCard ? "3px solid #00f" : "1px solid #ddd",
               borderRadius: 12,
               display: "flex",
               alignItems: "center",
@@ -440,48 +442,41 @@ export default function OnlineGame({
 
   /** Override: only allow move if selectedCard exists **/
   function onPieceDrop(sourceSquare, targetSquare) {
-    if (
-      !roomId ||
-      !socketRef.current ||
-      !isMyTurn ||
-      !selectedCard ||
-      gameOver
-    ) {
+    if (!roomId || !socketRef.current || !isMyTurn || gameOver) {
       return false;
     }
-    socketRef.current.emit("make_move", {
-      roomId,
-      from: sourceSquare,
-      to: targetSquare,
-    });
-    setStatusText("Waiting for opponent...");
-    return true;
+
+    // local validation so UX feels responsive
+    const piece = game.get(sourceSquare);
+    if (!piece || piece.color !== game.turn()) return false;
+    if (!isMoveAllowedByAnyCard(options, sourceSquare, piece.type))
+      return false;
+    return performMoveIfValid(sourceSquare, targetSquare);
   }
 
   function onSquareClick(square) {
     if (gameOver) return;
-    if (!isMyTurn || !selectedCard) {
-      setStatusText("Select a card first.");
+
+    if (!isMyTurn) return;
+    if (!options || options.length === 0) {
+      setStatusText("Waiting for your cards.");
       return;
     }
     const piece = game.get(square);
     const turn = game.turn();
-    if (!selectedCard) {
-      setStatusText("Select a card first.");
-      return;
-    }
+
     if (!selectedFrom) {
       if (
         piece &&
         piece.color === turn &&
-        isMoveAllowedByCard(selectedCard, square, piece.type)
+        isMoveAllowedByAnyCard(options, square, piece.type)
       ) {
         setSelectedFrom(square);
         setHighlightSquares(getLegalMoveSquares(square));
         setStatusText("");
       } else {
         if (piece && piece.color === turn)
-          setStatusText("Selected piece not allowed by card.");
+          setStatusText("That piece isn't allowed by your current cards.");
       }
       return;
     }
@@ -491,7 +486,7 @@ export default function OnlineGame({
       if (
         piece &&
         piece.color === turn &&
-        isMoveAllowedByCard(selectedCard, square, piece.type)
+        isMoveAllowedByAnyCard(options, square, piece.type)
       ) {
         setSelectedFrom(square);
         setHighlightSquares(getLegalMoveSquares(square));
@@ -515,6 +510,13 @@ export default function OnlineGame({
     setShowResignConfirm(false);
     if (!roomId || !socketRef.current) return;
     socketRef.current.emit("resign", { roomId });
+  }
+
+  function cancelSearch() {
+    if (socketRef.current) {
+      socketRef.current.emit("cancel_search");
+      navigate("/");
+    }
   }
 
   function getMergedStyles() {
@@ -642,11 +644,14 @@ export default function OnlineGame({
 
           {/* Resign and user color info */}
           <div style={{ marginTop: 18 }}>
-            {!gameOver && (
-              <button onClick={handleResign} style={{ marginRight: 8 }}>
-                Resign
-              </button>
-            )}
+            {!gameOver &&
+              (isFriendMode ? (
+                <button onClick={handleResign}>Resign</button>
+              ) : isSearching ? (
+                <button onClick={cancelSearch}>Back to Menu</button>
+              ) : (
+                <button onClick={handleResign}>Resign</button>
+              ))}
             <div style={{ marginTop: 12, color: "#666", fontSize: 15 }}>
               <strong>Your color:</strong>{" "}
               {color === "w" ? "White" : color === "b" ? "Black" : "—"}
@@ -716,7 +721,6 @@ export default function OnlineGame({
                 <>
                   <button
                     onClick={() => {
-                      //setWaitingRematch(true);
                       socketRef.current.emit("rematch_request", { roomId });
                     }}
                     style={{ marginRight: 8 }}
