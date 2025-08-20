@@ -30,6 +30,15 @@ function buildAvailableCardsFromGame(g) {
   return Array.from(cardSet).sort();
 }
 
+function isRoomCreatorPresent(roomId) {
+  const room = rooms.get(roomId);
+  if (!room) return false;
+
+  // Check if white player exists and their socket is still connected
+  const whiteSocket = io.sockets.sockets.get(room.players.white);
+  return !!whiteSocket;
+}
+
 // NEW: Smart draw returns 1-3 cards
 function smartDrawFor(g) {
   const avail = buildAvailableCardsFromGame(g);
@@ -47,7 +56,6 @@ function smartDrawFor(g) {
 }
 
 io.on("connection", (socket) => {
-
   socket.on("find_game", () => {
     if (waiting.length > 0) {
       const other = waiting.shift();
@@ -91,9 +99,25 @@ io.on("connection", (socket) => {
     socket.emit("room_created", { roomId });
   });
 
+  socket.on("check_room", ({ roomId }) => {
+    const room = rooms.get(roomId);
+    if (!room) return socket.emit("error", "room-not-found");
+    if (!isRoomCreatorPresent(roomId)) {
+      rooms.delete(roomId);
+      return socket.emit("error", "room-abandoned");
+    }
+    if (room.players.black) return socket.emit("error", "room-full");
+
+    socket.emit("room-ok", { roomId });
+  });
+
   socket.on("join_room", ({ roomId }) => {
     const room = rooms.get(roomId);
     if (!room) return socket.emit("error", "room-not-found");
+    if (!isRoomCreatorPresent(roomId)) {
+      rooms.delete(roomId); // Clean up abandoned room
+      return socket.emit("error", "room-abandoned");
+    }
     if (room.players.black) return socket.emit("error", "room-full");
 
     room.players.black = socket.id;
@@ -117,13 +141,11 @@ io.on("connection", (socket) => {
     io.to(whiteSid).emit("cards_drawn", { cards: cardChoices });
   });
 
-  socket.on("select_card", ({ roomId, card }) => {
-    // Player explicitly selects one of their drawn cards
-    const room = rooms.get(roomId);
-    if (!room) return;
-    const entry = room.drawn[socket.id];
-    if (!entry || !entry.options.includes(card)) return;
-    entry.chosen = card; // mark chosen
+  socket.on("cancel_search", () => {
+    const idx = waiting.indexOf(socket.id);
+    if (idx !== -1) {
+      waiting.splice(idx, 1);
+    }
   });
 
   socket.on("make_move", ({ roomId, from, to }) => {
@@ -144,12 +166,25 @@ io.on("connection", (socket) => {
       return socket.emit("invalid_move", "not-your-turn");
 
     const cardEntry = drawn[socket.id];
-    if (!cardEntry || !cardEntry.chosen)
-      return socket.emit("invalid_move", "no-card-chosen");
 
-    const chosenCard = cardEntry.chosen;
+    if (!cardEntry || !cardEntry.options || cardEntry.options.length === 0) {
+      return socket.emit("invalid_move", "no-cards-available");
+    }
+
     const piece = game.get(from);
     if (!piece) return socket.emit("invalid_move", "no-piece");
+
+    let usedCard = null;
+    for (const c of cardEntry.options) {
+      if (isAllowedByCard(c, from, piece.type)) {
+        usedCard = c;
+        break;
+      }
+    }
+
+    if (!usedCard) {
+      return socket.emit("invalid_move", "card_restriction");
+    }
 
     function isAllowedByCard(card, srcSquare, pType) {
       if (!card) return false;
@@ -166,18 +201,16 @@ io.on("connection", (socket) => {
       return map[card] === pType;
     }
 
-    if (!isAllowedByCard(chosenCard, from, piece.type)) {
-      return socket.emit("invalid_move", "card_restriction");
-    }
-
     const verboseMoves = game.moves({ square: from, verbose: true });
     const chosen = verboseMoves.find((m) => m.to === to);
     if (!chosen) return socket.emit("invalid_move", "illegal");
 
     game.move({ from, to, promotion: "q" });
 
-    // consume card
-    room.drawn[socket.id] = null;
+    // consume only the used card
+    room.drawn[socket.id].options = cardEntry.options.filter(
+      (c) => c !== usedCard
+    );
 
     const fen = game.fen();
     const status = {
@@ -203,103 +236,110 @@ io.on("connection", (socket) => {
       reason: "resign",
       resignedId: socket.id,
     });
-
-    //rooms.delete(roomId);
   });
 
   socket.on("leave_match", ({ roomId }) => {
-  const room = rooms.get(roomId);
-  if (!room) return;
-  // Remove this player from the room, but DO NOT delete the entire room if another player remains
-  if (room.players.white === socket.id) {
-    room.players.white = null;
-  } else if (room.players.black === socket.id) {
-    room.players.black = null;
-  }
-  socket.leave(roomId);
-});
+    const room = rooms.get(roomId);
+    if (!room) return;
+    // Remove this player from the room, but DO NOT delete the entire room if another player remains
+    if (room.players.white === socket.id) {
+      // Notify any waiting players that the room is abandoned
+      rooms.delete(roomId);
+      io.to(roomId).emit("error", "room-abandoned");
+    } else if (room.players.black === socket.id) {
+      room.players.black = null;
+      io.to(roomId).emit("opponent_left");
+    }
+    socket.leave(roomId);
+  });
 
   socket.on("request_initial_cards", ({ roomId }) => {
-  const room = rooms.get(roomId);
-  if (!room) return;
-  const entry = room.drawn[socket.id];
-  if (entry && entry.options) {
-    io.to(socket.id).emit("cards_drawn", { cards: entry.options });
-  }
-});
+    const room = rooms.get(roomId);
+    if (!room) return;
+    const entry = room.drawn[socket.id];
+    if (entry && entry.options) {
+      io.to(socket.id).emit("cards_drawn", { cards: entry.options });
+    }
+  });
 
-// Handle rematch request from one of the players
-socket.on("rematch_request", ({ roomId }) => {
-  const room = rooms.get(roomId);
-  
-  if (!room) return;
+  // Handle rematch request from one of the players
+  socket.on("rematch_request", ({ roomId }) => {
+    const room = rooms.get(roomId);
 
-  // Send prompt to the OTHER player
-  const otherId =
-    room.players.white === socket.id
-      ? room.players.black
-      : room.players.white;
-      
-  if (otherId) {
-    io.to(socket.id).emit("rematch_prompt", { roomId });
-    io.to(otherId).emit("rematch_request", { roomId }); 
-  }
-});
+    if (!room) return;
 
-// Handle response to rematch (accept or reject)
-socket.on("rematch_response", ({ roomId, accepted }) => {
-  const room = rooms.get(roomId);
-  if (!room) return;
+    // Send prompt to the OTHER player
+    const otherId =
+      room.players.white === socket.id
+        ? room.players.black
+        : room.players.white;
 
-  const requester =
-    socket.id === room.players.white ? room.players.black : room.players.white;
+    if (otherId) {
+      io.to(socket.id).emit("rematch_prompt", { roomId });
+      io.to(otherId).emit("rematch_request", { roomId });
+    }
+  });
 
-  if (accepted) {
-    // Reset the room's Chess game
-    const newGame = new Chess();
-    room.game = newGame;
-    room.drawn = {};
-    // Send back acceptance boolean to both players
-    io.to(roomId).emit("rematch_response", { accepted, roomId });
-    // Redraw cards for white to start
-    const whiteSid = room.players.white;
-    const cardChoices = smartDrawFor(newGame);
-    room.drawn[whiteSid] = { options: cardChoices, chosen: null };
-    io.to(whiteSid).emit("cards_drawn", { cards: cardChoices });
-  } else {
-   io.to(requester).emit("rematch_declined");
-   // Also return both to menu
-   io.to(socket.id).emit("return_home");
-   rooms.delete(roomId);
-  }
-});
+  // Handle response to rematch (accept or reject)
+  socket.on("rematch_response", ({ roomId, accepted }) => {
+    const room = rooms.get(roomId);
+    if (!room) return;
 
-socket.on("end_friend_match", ({ roomId }) => {
-  const room = rooms.get(roomId);
-  if (!room) return;
-  if (!roomId.startsWith("friend-")) return;
+    const requester =
+      socket.id === room.players.white
+        ? room.players.black
+        : room.players.white;
 
-  const other = room.players.white === socket.id
-    ? room.players.black
-    : room.players.white;
+    if (accepted) {
+      // Reset the room's Chess game
+      const newGame = new Chess();
+      room.game = newGame;
+      room.drawn = {};
+      // Send back acceptance boolean to both players
+      io.to(roomId).emit("rematch_response", { accepted, roomId });
+      // Redraw cards for white to start
+      const whiteSid = room.players.white;
+      const cardChoices = smartDrawFor(newGame);
+      room.drawn[whiteSid] = { options: cardChoices, chosen: null };
+      io.to(whiteSid).emit("cards_drawn", { cards: cardChoices });
+    } else {
+      io.to(requester).emit("rematch_declined");
+      // Also return both to menu
+      io.to(socket.id).emit("return_home");
+      rooms.delete(roomId);
+    }
+  });
 
-  if (other) {
-    io.to(other).emit("opponent_left");
-  }
+  socket.on("end_friend_match", ({ roomId }) => {
+    const room = rooms.get(roomId);
+    if (!room) return;
+    if (!roomId.startsWith("friend-")) return;
 
-  io.to(socket.id).emit("return_home"); // immediate back for the one who clicked
-  rooms.delete(roomId);
-});
+    const other =
+      room.players.white === socket.id
+        ? room.players.black
+        : room.players.white;
+
+    if (other) {
+      io.to(other).emit("opponent_left");
+    }
+
+    io.to(socket.id).emit("return_home"); // immediate back for the one who clicked
+    rooms.delete(roomId);
+  });
 
   socket.on("disconnect", () => {
-    const idx = waiting.indexOf(socket.id);
-    if (idx !== -1) waiting.splice(idx, 1);
     for (const [roomId, room] of rooms.entries()) {
-      if (
-        room.players.white === socket.id ||
-        room.players.black === socket.id
-      ) {
+      let role = null;
+      if (room.players.white === socket.id) role = "white";
+      if (room.players.black === socket.id) role = "black";
+      if (role) {
+        // Notify the opponent
+        socket.to(roomId).emit("opponent_left");
+
+        // Clean up room completely
         rooms.delete(roomId);
+        break;
       }
     }
   });
