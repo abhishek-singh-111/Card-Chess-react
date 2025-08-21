@@ -274,6 +274,12 @@ export default function OnlineGame({
       setGameOver(true);
     });
 
+    s.on("opponent_left", () => {
+        setShowGameOverModal(false);
+        toast.info("Opponent left the room, redirecting to main menu");
+        setTimeout(() => navigate("/"), 4000);
+      });
+
     // NEW: Rematch handlers (friend mode)
     if (isFriendMode) {
       s.on("rematch_request", ({ roomId: reqRoom }) => {
@@ -299,11 +305,7 @@ export default function OnlineGame({
         setTimeout(() => navigate("/"), 4000);
       });
 
-      s.on("opponent_left", () => {
-        setShowGameOverModal(false);
-        toast.info("Opponent left the room, redirecting to main menu");
-        setTimeout(() => navigate("/"), 4000);
-      });
+      
 
       s.on("rematch_response", ({ accepted, roomId: reqRoom }) => {
         if (accepted) {
