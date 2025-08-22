@@ -9,10 +9,15 @@ import CardDisplay from "../components/CardDisplay";
 import CapturedPieces from "../components/CapturedPieces";
 import GameOverModal from "../components/GameOverModal";
 
-import { moveSound, captureSound, checkSound, endSound } from "../utils/soundsUtil";
+import {
+  moveSound,
+  captureSound,
+  checkSound,
+  endSound,
+} from "../utils/soundsUtil";
 
-const SERVER_URL = process.env.REACT_APP_SERVER_URL || "http://localhost:4000";
-//const SERVER_URL = process.env.REACT_APP_SERVER_URL || "https://card-chess.onrender.com";
+//const SERVER_URL = process.env.REACT_APP_SERVER_URL || "http://localhost:4000";
+const SERVER_URL = process.env.REACT_APP_SERVER_URL || "https://card-chess.onrender.com";
 
 export default function OnlineGame({
   socket: externalSocket,
@@ -222,9 +227,11 @@ export default function OnlineGame({
     });
 
     s.on("opponent_left", () => {
-      setShowGameOverModal(false);
-      toast.info("Opponent left the room, redirecting to main menu");
-      setTimeout(() => navigate("/"), 4000);
+      let finalMsg = "Opponent left. You win!";
+      endSound.play();
+      setGameOverMessage(finalMsg);
+      setShowGameOverModal(true);
+      setGameOver(true);
     });
 
     // NEW: Rematch handlers (friend mode)
