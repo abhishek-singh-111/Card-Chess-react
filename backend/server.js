@@ -85,6 +85,7 @@ io.on("connection", (socket) => {
     } else {
       waiting.push(socket.id);
       socket.emit("waiting");
+      console.log("Waiting players:", waiting.length);
     }
   });
 
@@ -406,6 +407,12 @@ io.on("connection", (socket) => {
   });
 
   socket.on("disconnect", () => {
+    // Remove from waiting queue if present
+    const idx = waiting.indexOf(socket.id);
+    if (idx !== -1) {
+      waiting.splice(idx, 1);
+    }
+
     for (const [roomId, room] of rooms.entries()) {
       let role = null;
       if (room.players.white === socket.id) role = "white";
