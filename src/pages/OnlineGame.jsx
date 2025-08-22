@@ -9,10 +9,15 @@ import CardDisplay from "../components/CardDisplay";
 import CapturedPieces from "../components/CapturedPieces";
 import GameOverModal from "../components/GameOverModal";
 
-import { moveSound, captureSound, checkSound, endSound } from "../utils/soundsUtil";
+import {
+  moveSound,
+  captureSound,
+  checkSound,
+  endSound,
+} from "../utils/soundsUtil";
 
-const SERVER_URL = process.env.REACT_APP_SERVER_URL || "http://localhost:4000";
-//const SERVER_URL = process.env.REACT_APP_SERVER_URL || "https://card-chess.onrender.com";
+//const SERVER_URL = process.env.REACT_APP_SERVER_URL || "http://localhost:4000";
+const SERVER_URL = process.env.REACT_APP_SERVER_URL || "https://card-chess.onrender.com";
 
 export default function OnlineGame({
   socket: externalSocket,
@@ -23,7 +28,6 @@ export default function OnlineGame({
   const socketRef = useRef(null);
   const navigate = useNavigate();
 
-  // Detect if in friend mode
   const isFriendMode = !!externalSocket;
 
   // core state
@@ -100,7 +104,6 @@ export default function OnlineGame({
     });
 
     s.on("cards_drawn", ({ cards }) => {
-      // array from server
       setOptions(cards);
       setStatusText(
         "Your turn: move any piece that matches one of your cards."
@@ -290,6 +293,29 @@ export default function OnlineGame({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [navigate, externalSocket]);
 
+  // Handle browser back button (Online + Friend mode)
+  useEffect(() => {
+    const handleBack = () => {
+      if (!socketRef.current || !roomId) return;
+
+      if (isFriendMode) {
+        // Friend game → behave like disconnect
+        socketRef.current.emit("leave_match", { roomId });
+        navigate("/");
+      } else {
+        // Online matchmaking → same as Back to Menu button
+        socketRef.current.emit("leave_match", { roomId });
+        navigate("/");
+      }
+    };
+
+    window.addEventListener("popstate", handleBack);
+
+    return () => {
+      window.removeEventListener("popstate", handleBack);
+    };
+  }, [roomId, isFriendMode, navigate]);
+
   function getLegalMoveSquares(square) {
     const moves = game.moves({ square, verbose: true }) || [];
     if (!moves.length) return {};
@@ -398,7 +424,6 @@ export default function OnlineGame({
       return;
     }
     if (performMoveIfValid(selectedFrom, square)) {
-      // sent
     } else {
       if (
         piece &&

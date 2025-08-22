@@ -48,9 +48,7 @@ export default function FriendGame({ onExit }) {
     });
 
     socket.on("opponent_left", () => {
-      setStep("menu");
-      setGameProps(null);
-      setRoomId(null);
+      // Do nothing here, OnlineGame will handle toast + redirect
     });
 
     return () => {
@@ -59,6 +57,22 @@ export default function FriendGame({ onExit }) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [socket]);
+
+  // Handle browser back button in FriendGame
+  useEffect(() => {
+    const handleBack = () => {
+      if (roomId) {
+        socket.emit("leave_match", { roomId });
+      }
+      navigate("/");
+    };
+
+    window.addEventListener("popstate", handleBack);
+
+    return () => {
+      window.removeEventListener("popstate", handleBack);
+    };
+  }, [step, roomId, socket, navigate]);
 
   // -------- UI States --------
   if (step === "menu") {
@@ -149,6 +163,5 @@ export default function FriendGame({ onExit }) {
   if (step === "playing" && gameProps) {
     return <OnlineGame {...gameProps} onExit={onExit} />;
   }
-
   return null;
 }
