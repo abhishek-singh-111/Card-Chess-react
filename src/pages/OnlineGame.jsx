@@ -73,14 +73,41 @@ export default function OnlineGame({
       s.emit("request_initial_cards", { roomId: initialRoomId });
     } else {
       // --- Matchmaking mode ---
-      s = io(SERVER_URL);
+      s = io(SERVER_URL, {
+        transports: ["websocket"],
+        reconnection: true,
+        reconnectionAttempts: Infinity,
+        reconnectionDelay: 500,
+        reconnectionDelayMax: 5000,
+        timeout: 20000,
+      });
       socketRef.current = s;
       s.on("connect", () => {
-        setStatusText("Connected. Finding match...");
-        setIsSearching(true);
-        s.emit("find_game");
+        // If we don't have a room yet, we are matchmaking. Otherwise we're reconnecting.
+        if (!roomId) {
+          setStatusText("Connected. Finding match...");
+          setIsSearching(true);
+          s.emit("find_game");
+        } else {
+          setStatusText("Reconnected. Attempting to rejoin your match…");
+          s.emit("rejoin_room", { roomId });
+        }
       });
     }
+
+    s.on("reconnect_attempt", () => {
+      setStatusText("Reconnecting…");
+    });
+
+    s.on("reconnect", () => {
+      if (roomId) {
+        s.emit("rejoin_room", { roomId });
+      }
+    });
+
+    s.on("connect_error", () => {
+      setStatusText("Connection error. Retrying…");
+    });
 
     s.on("waiting", () => {
       setIsSearching(true);
@@ -110,6 +137,17 @@ export default function OnlineGame({
       setStatusText(
         "Your turn: move any piece that matches one of your cards."
       );
+    });
+
+    s.on("rejoined", ({ fen, status, lastMove, cards }) => {
+      const g = new Chess(fen);
+      setGame(g);
+      setGameFen(fen);
+      prevFenRef.current = fen;
+      if (cards && Array.isArray(cards)) setOptions(cards);
+      if (lastMove) setLastMoveSquares(lastMove);
+      setStatusText("Rejoined match.");
+      setGameOver(false);
     });
 
     s.on("game_state", ({ fen, status, lastMove }) => {
