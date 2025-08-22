@@ -28,7 +28,6 @@ export default function OnlineGame({
   const socketRef = useRef(null);
   const navigate = useNavigate();
 
-  // Detect if in friend mode
   const isFriendMode = !!externalSocket;
 
   // core state
@@ -73,41 +72,14 @@ export default function OnlineGame({
       s.emit("request_initial_cards", { roomId: initialRoomId });
     } else {
       // --- Matchmaking mode ---
-      s = io(SERVER_URL, {
-        transports: ["websocket"],
-        reconnection: true,
-        reconnectionAttempts: Infinity,
-        reconnectionDelay: 500,
-        reconnectionDelayMax: 5000,
-        timeout: 20000,
-      });
+      s = io(SERVER_URL);
       socketRef.current = s;
       s.on("connect", () => {
-        // If we don't have a room yet, we are matchmaking. Otherwise we're reconnecting.
-        if (!roomId) {
-          setStatusText("Connected. Finding match...");
-          setIsSearching(true);
-          s.emit("find_game");
-        } else {
-          setStatusText("Reconnected. Attempting to rejoin your match…");
-          s.emit("rejoin_room", { roomId });
-        }
+        setStatusText("Connected. Finding match...");
+        setIsSearching(true);
+        s.emit("find_game");
       });
     }
-
-    s.on("reconnect_attempt", () => {
-      setStatusText("Reconnecting…");
-    });
-
-    s.on("reconnect", () => {
-      if (roomId) {
-        s.emit("rejoin_room", { roomId });
-      }
-    });
-
-    s.on("connect_error", () => {
-      setStatusText("Connection error. Retrying…");
-    });
 
     s.on("waiting", () => {
       setIsSearching(true);
@@ -132,22 +104,10 @@ export default function OnlineGame({
     });
 
     s.on("cards_drawn", ({ cards }) => {
-      // array from server
       setOptions(cards);
       setStatusText(
         "Your turn: move any piece that matches one of your cards."
       );
-    });
-
-    s.on("rejoined", ({ fen, status, lastMove, cards }) => {
-      const g = new Chess(fen);
-      setGame(g);
-      setGameFen(fen);
-      prevFenRef.current = fen;
-      if (cards && Array.isArray(cards)) setOptions(cards);
-      if (lastMove) setLastMoveSquares(lastMove);
-      setStatusText("Rejoined match.");
-      setGameOver(false);
     });
 
     s.on("game_state", ({ fen, status, lastMove }) => {
@@ -265,11 +225,9 @@ export default function OnlineGame({
     });
 
     s.on("opponent_left", () => {
-      let finalMsg = "Opponent left. You win!";
-      endSound.play();
-      setGameOverMessage(finalMsg);
-      setShowGameOverModal(true);
-      setGameOver(true);
+      setShowGameOverModal(false);
+      toast.info("Opponent left the room, redirecting to main menu");
+      setTimeout(() => navigate("/"), 4000);
     });
 
     // NEW: Rematch handlers (friend mode)
@@ -334,6 +292,29 @@ export default function OnlineGame({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [navigate, externalSocket]);
+
+  // Handle browser back button (Online + Friend mode)
+  useEffect(() => {
+    const handleBack = () => {
+      if (!socketRef.current || !roomId) return;
+
+      if (isFriendMode) {
+        // Friend game → behave like disconnect
+        socketRef.current.emit("leave_match", { roomId });
+        navigate("/");
+      } else {
+        // Online matchmaking → same as Back to Menu button
+        socketRef.current.emit("leave_match", { roomId });
+        navigate("/");
+      }
+    };
+
+    window.addEventListener("popstate", handleBack);
+
+    return () => {
+      window.removeEventListener("popstate", handleBack);
+    };
+  }, [roomId, isFriendMode, navigate]);
 
   function getLegalMoveSquares(square) {
     const moves = game.moves({ square, verbose: true }) || [];
@@ -443,7 +424,6 @@ export default function OnlineGame({
       return;
     }
     if (performMoveIfValid(selectedFrom, square)) {
-      // sent
     } else {
       if (
         piece &&

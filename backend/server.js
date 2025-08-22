@@ -11,12 +11,9 @@ const io = new Server(server, { cors: { origin: "*" } });
 const PORT = process.env.PORT || 4000;
 
 const waiting = [];
-// roomId -> { game: Chess(), players: { white: sid, black: sid|null },
-//            drawn: { sid: { options: [], chosen: null } }  }
 const rooms = new Map();
-// roomId -> timeout
 const disconnectTimers = new Map();
-const DISCONNECT_GRACE_MS = 60000; // 60s to reconnect
+const DISCONNECT_GRACE_MS = 10000;
 
 function buildAvailableCardsFromGame(g) {
   const moves = g.moves({ verbose: true }) || [];
@@ -49,7 +46,6 @@ function smartDrawFor(g) {
     // if fewer than 3 available, just return them
     return avail;
   }
-  // Simple heuristic: random sample of 3
   const sample = [];
   while (sample.length < 3) {
     const pick = avail[Math.floor(Math.random() * avail.length)];
@@ -65,7 +61,7 @@ io.on("connection", (socket) => {
       const roomId = `room-${socket.id.slice(0, 6)}-${other.slice(0, 6)}`;
       const game = new Chess();
       const players = { white: other, black: socket.id };
-      rooms.set(roomId, { game, players, drawn: {} });
+      rooms.set(roomId, { game, players, drawn: {}, state: "active" });
 
       socket.join(roomId);
       const otherSock = io.sockets.sockets.get(other);
@@ -96,7 +92,7 @@ io.on("connection", (socket) => {
     const roomId = `friend-${Math.random().toString(36).substr(2, 6)}`;
     const game = new Chess();
     const players = { white: socket.id, black: null };
-    rooms.set(roomId, { game, players, drawn: {} });
+    rooms.set(roomId, { game, players, drawn: {}, state: "active" });
 
     socket.join(roomId);
     socket.emit("room_created", { roomId });
@@ -118,12 +114,13 @@ io.on("connection", (socket) => {
     const room = rooms.get(roomId);
     if (!room) return socket.emit("error", "room-not-found");
     if (!isRoomCreatorPresent(roomId)) {
-      rooms.delete(roomId); // Clean up abandoned room
+      rooms.delete(roomId);
       return socket.emit("error", "room-abandoned");
     }
     if (room.players.black) return socket.emit("error", "room-full");
 
     room.players.black = socket.id;
+    room.state = "active";
     socket.join(roomId);
 
     io.to(room.players.white).emit("match_found", {
@@ -223,7 +220,22 @@ io.on("connection", (socket) => {
     };
     io.to(roomId).emit("game_state", { fen, status, lastMove: { from, to } });
 
-    if (status.isCheckmate || status.isDraw) return;
+    if (status.isCheckmate) {
+      io.to(roomId).emit("gameOver", {
+        reason: "checkmate",
+        winner: game.turn() === "w" ? "b" : "w", // opposite of the side to move
+      });
+      room.state = "ended"; // mark room as finished
+      return;
+    }
+
+    if (status.isDraw) {
+      io.to(roomId).emit("gameOver", {
+        reason: "draw",
+      });
+      room.state = "ended"; // mark room as finished
+      return;
+    }
 
     const nextSid = game.turn() === "w" ? players.white : players.black;
     const nextChoices = smartDrawFor(game);
@@ -239,19 +251,28 @@ io.on("connection", (socket) => {
       reason: "resign",
       resignedId: socket.id,
     });
+    room.state = "ended"; // keep room, allow winner’s modal to persist
   });
 
   socket.on("leave_match", ({ roomId }) => {
     const room = rooms.get(roomId);
     if (!room) return;
-    // Remove this player from the room, but DO NOT delete the entire room if another player remains
-    if (room.players.white === socket.id) {
-      // Notify any waiting players that the room is abandoned
+
+    const isWhite = room.players.white === socket.id;
+    const isBlack = room.players.black === socket.id;
+
+    if (room.state === "active") {
+      socket.to(roomId).emit("opponent_left");
       rooms.delete(roomId);
-      io.to(roomId).emit("error", "room-abandoned");
-    } else if (room.players.black === socket.id) {
-      room.players.black = null;
-      io.to(roomId).emit("opponent_left");
+    } else {
+      // Game already ended → just let this player leave quietly
+      if (isWhite) room.players.white = null;
+      if (isBlack) room.players.black = null;
+
+      // Delete room if empty
+      if (!room.players.white && !room.players.black) {
+        rooms.delete(roomId);
+      }
     }
     socket.leave(roomId);
   });
@@ -270,8 +291,6 @@ io.on("connection", (socket) => {
     const room = rooms.get(roomId);
 
     if (!room) return;
-
-    // Send prompt to the OTHER player
     const otherId =
       room.players.white === socket.id
         ? room.players.black
@@ -394,21 +413,43 @@ io.on("connection", (socket) => {
 
       if (!role) continue;
 
-      // Start a grace timer instead of deleting immediately
-      if (disconnectTimers.has(roomId))
-        clearTimeout(disconnectTimers.get(roomId));
-      disconnectTimers.set(
-        roomId,
-        setTimeout(() => {
-          // If they never came back, then declare opponent left and delete room
-          const stillThere = rooms.get(roomId);
-          if (!stillThere) return;
+      if (roomId.startsWith("friend-")) {
+        // Friend game → notify immediately
+        if (room.state === "active") {
           socket.to(roomId).emit("opponent_left");
           rooms.delete(roomId);
-          disconnectTimers.delete(roomId);
-        }, DISCONNECT_GRACE_MS)
-      );
-
+        } else {
+          if (room.players.white === socket.id) room.players.white = null;
+          if (room.players.black === socket.id) room.players.black = null;
+          if (!room.players.white && !room.players.black) {
+            rooms.delete(roomId);
+          }
+        }
+      } else {
+        // Online matchmaking → use grace timer
+        if (disconnectTimers.has(roomId))
+          clearTimeout(disconnectTimers.get(roomId));
+        disconnectTimers.set(
+          roomId,
+          setTimeout(() => {
+            const stillThere = rooms.get(roomId);
+            if (!stillThere) return;
+            if (stillThere.state === "active") {
+              socket.to(roomId).emit("opponent_left");
+              rooms.delete(roomId);
+            } else {
+              if (stillThere.players.white === socket.id)
+                stillThere.players.white = null;
+              if (stillThere.players.black === socket.id)
+                stillThere.players.black = null;
+              if (!stillThere.players.white && !stillThere.players.black) {
+                rooms.delete(roomId);
+              }
+            }
+            disconnectTimers.delete(roomId);
+          }, DISCONNECT_GRACE_MS)
+        );
+      }
       break;
     }
   });
