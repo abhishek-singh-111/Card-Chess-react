@@ -14,6 +14,9 @@ const waiting = [];
 // roomId -> { game: Chess(), players: { white: sid, black: sid|null },
 //            drawn: { sid: { options: [], chosen: null } }  }
 const rooms = new Map();
+// roomId -> timeout
+const disconnectTimers = new Map();
+const DISCONNECT_GRACE_MS = 60000; // 60s to reconnect
 
 function buildAvailableCardsFromGame(g) {
   const moves = g.moves({ verbose: true }) || [];
@@ -328,19 +331,85 @@ io.on("connection", (socket) => {
     rooms.delete(roomId);
   });
 
+  socket.on("rejoin_room", ({ roomId }) => {
+    const room = rooms.get(roomId);
+    if (!room) return socket.emit("error", "room-not-found");
+
+    // If this socket belongs to one of the players, swap in the new socket.id and rejoin.
+    let rejoined = false;
+
+    if (room.players.white && !io.sockets.sockets.get(room.players.white)) {
+      // white was disconnected – assign this socket as white
+      room.players.white = socket.id;
+      socket.join(roomId);
+      rejoined = true;
+    } else if (
+      room.players.black &&
+      !io.sockets.sockets.get(room.players.black)
+    ) {
+      // black was disconnected – assign this socket as black
+      room.players.black = socket.id;
+      socket.join(roomId);
+      rejoined = true;
+    } else if (
+      room.players.white === socket.id ||
+      room.players.black === socket.id
+    ) {
+      // already correct id, just ensure joined
+      socket.join(roomId);
+      rejoined = true;
+    }
+
+    if (!rejoined) {
+      // If both players are present, prevent hijacking
+      return socket.emit("error", "rejoin-denied");
+    }
+
+    // Clear pending disconnect cleanup for this room
+    if (disconnectTimers.has(roomId)) {
+      clearTimeout(disconnectTimers.get(roomId));
+      disconnectTimers.delete(roomId);
+    }
+
+    // Send current state back so client can resume immediately
+    const { game, drawn } = room;
+    const fen = game.fen();
+    const status = {
+      isCheck: game.isCheck(),
+      isCheckmate: game.isCheckmate(),
+      isDraw: game.isDraw(),
+    };
+    // Return any pending cards for this player (if any)
+    const entry = drawn[socket.id];
+    const cards = entry && entry.options ? entry.options : [];
+
+    socket.emit("rejoined", { fen, status, lastMove: null, cards });
+  });
+
   socket.on("disconnect", () => {
     for (const [roomId, room] of rooms.entries()) {
       let role = null;
       if (room.players.white === socket.id) role = "white";
       if (room.players.black === socket.id) role = "black";
-      if (role) {
-        // Notify the opponent
-        socket.to(roomId).emit("opponent_left");
 
-        // Clean up room completely
-        rooms.delete(roomId);
-        break;
-      }
+      if (!role) continue;
+
+      // Start a grace timer instead of deleting immediately
+      if (disconnectTimers.has(roomId))
+        clearTimeout(disconnectTimers.get(roomId));
+      disconnectTimers.set(
+        roomId,
+        setTimeout(() => {
+          // If they never came back, then declare opponent left and delete room
+          const stillThere = rooms.get(roomId);
+          if (!stillThere) return;
+          socket.to(roomId).emit("opponent_left");
+          rooms.delete(roomId);
+          disconnectTimers.delete(roomId);
+        }, DISCONNECT_GRACE_MS)
+      );
+
+      break;
     }
   });
 });
