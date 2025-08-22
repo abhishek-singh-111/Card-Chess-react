@@ -6,8 +6,8 @@ import { useNavigate } from "react-router-dom";
 import { toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 
-//const SERVER_URL = process.env.REACT_APP_SERVER_URL || "http://localhost:4000";
-const SERVER_URL = process.env.REACT_APP_SERVER_URL || "https://card-chess.onrender.com";
+const SERVER_URL = process.env.REACT_APP_SERVER_URL || "http://localhost:4000";
+//const SERVER_URL = process.env.REACT_APP_SERVER_URL || "https://card-chess.onrender.com";
 
 export default function FriendGame({ onExit }) {
   const [socket] = useState(() => io(SERVER_URL));

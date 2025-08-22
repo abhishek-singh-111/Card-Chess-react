@@ -5,67 +5,14 @@ import { Chess } from "chess.js";
 import { Chessboard } from "react-chessboard";
 import { io } from "socket.io-client";
 import { toast } from "react-toastify";
-import moveSelf from "./sounds/move-self.mp3";
-import captureMp3 from "./sounds/capture.mp3";
-import moveCheck from "./sounds/move-check.mp3";
+import CardDisplay from "../components/CardDisplay";
+import CapturedPieces from "../components/CapturedPieces";
+import GameOverModal from "../components/GameOverModal";
 
-//const SERVER_URL = process.env.REACT_APP_SERVER_URL || "http://localhost:4000";
-const SERVER_URL = process.env.REACT_APP_SERVER_URL || "https://card-chess.onrender.com";
+import { moveSound, captureSound, checkSound, endSound } from "../utils/soundsUtil";
 
-// Sound effects
-const moveSound = new Audio(moveSelf);
-const captureSound = new Audio(captureMp3);
-const checkSound = new Audio(moveCheck);
-const endSound = new Audio(moveCheck);
-
-function CardSVG({ cardId, large = false }) {
-  if (!cardId) return null;
-  const isPawn = cardId.startsWith("pawn-");
-  const label = isPawn
-    ? `Pawn ${cardId.split("-")[1].toUpperCase()}`
-    : cardId[0].toUpperCase() + cardId.slice(1);
-  const symbol = isPawn
-    ? "♟"
-    : cardId === "knight"
-    ? "♞"
-    : cardId === "bishop"
-    ? "♝"
-    : cardId === "rook"
-    ? "♜"
-    : cardId === "queen"
-    ? "♛"
-    : "♚";
-  const width = large ? 160 : 90,
-    height = large ? 240 : 140,
-    bg = isPawn ? "#fde68a" : "#bfdbfe";
-  return (
-    <svg
-      width={width}
-      height={height}
-      viewBox={`0 0 ${width} ${height}`}
-      style={{ borderRadius: 12 }}
-    >
-      <rect x={0} y={0} width={width} height={height} rx={12} fill={bg} />
-      <text
-        x={width / 2}
-        y={height * 0.36}
-        textAnchor="middle"
-        fontSize={large ? 56 : 34}
-      >
-        {symbol}
-      </text>
-      <text
-        x={width / 2}
-        y={height * 0.72}
-        textAnchor="middle"
-        fontSize={large ? 18 : 11}
-        style={{ fontWeight: 600 }}
-      >
-        {label}
-      </text>
-    </svg>
-  );
-}
+const SERVER_URL = process.env.REACT_APP_SERVER_URL || "http://localhost:4000";
+//const SERVER_URL = process.env.REACT_APP_SERVER_URL || "https://card-chess.onrender.com";
 
 export default function OnlineGame({
   socket: externalSocket,
@@ -275,10 +222,10 @@ export default function OnlineGame({
     });
 
     s.on("opponent_left", () => {
-        setShowGameOverModal(false);
-        toast.info("Opponent left the room, redirecting to main menu");
-        setTimeout(() => navigate("/"), 4000);
-      });
+      setShowGameOverModal(false);
+      toast.info("Opponent left the room, redirecting to main menu");
+      setTimeout(() => navigate("/"), 4000);
+    });
 
     // NEW: Rematch handlers (friend mode)
     if (isFriendMode) {
@@ -304,8 +251,6 @@ export default function OnlineGame({
         toast.info("Opponent declined rematch, redirecting to main menu");
         setTimeout(() => navigate("/"), 4000);
       });
-
-      
 
       s.on("rematch_response", ({ accepted, roomId: reqRoom }) => {
         if (accepted) {
@@ -412,36 +357,6 @@ export default function OnlineGame({
     return true;
   }
 
-  // This constant renders the selectable cards with solid colored background
-  const choiceGrid = (
-    <div
-      style={{ display: "flex", gap: 12, alignItems: "center", height: 260 }}
-    >
-      {options.map((c) => {
-        const isPawn = c.startsWith("pawn-");
-        const bg = isPawn ? "#fde68a" : "#bfdbfe";
-        return (
-          <div
-            key={c}
-            style={{
-              width: 170,
-              height: 260,
-              background: bg,
-              borderRadius: 12,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              cursor: "pointer",
-              boxSizing: "border-box",
-            }}
-          >
-            <CardSVG cardId={c} large={true} />
-          </div>
-        );
-      })}
-    </div>
-  );
-
   /** Override: only allow move if selectedCard exists **/
   function onPieceDrop(sourceSquare, targetSquare) {
     if (!roomId || !socketRef.current || !isMyTurn || gameOver) {
@@ -531,25 +446,6 @@ export default function OnlineGame({
     return styles;
   }
 
-  const pieceImages = {
-    w: {
-      p: "https://chessboardjs.com/img/chesspieces/wikipedia/wP.png",
-      n: "https://chessboardjs.com/img/chesspieces/wikipedia/wN.png",
-      b: "https://chessboardjs.com/img/chesspieces/wikipedia/wB.png",
-      r: "https://chessboardjs.com/img/chesspieces/wikipedia/wR.png",
-      q: "https://chessboardjs.com/img/chesspieces/wikipedia/wQ.png",
-      k: "https://chessboardjs.com/img/chesspieces/wikipedia/wK.png",
-    },
-    b: {
-      p: "https://chessboardjs.com/img/chesspieces/wikipedia/bP.png",
-      n: "https://chessboardjs.com/img/chesspieces/wikipedia/bN.png",
-      b: "https://chessboardjs.com/img/chesspieces/wikipedia/bB.png",
-      r: "https://chessboardjs.com/img/chesspieces/wikipedia/bR.png",
-      q: "https://chessboardjs.com/img/chesspieces/wikipedia/bQ.png",
-      k: "https://chessboardjs.com/img/chesspieces/wikipedia/bK.png",
-    },
-  };
-
   function genSquares() {
     const squares = [];
     for (let file of "abcdefgh") {
@@ -571,16 +467,10 @@ export default function OnlineGame({
             {statusText || (isMyTurn ? "Your turn" : "Opponent's turn")}
           </div>
           {/* Captured pieces by opponent */}
-          <div style={{ display: "flex", gap: 3 }}>
-            {(color === "w" ? blackCaptured : whiteCaptured).map((t, idx) => (
-              <img
-                key={idx}
-                src={color === "w" ? pieceImages["w"][t] : pieceImages["b"][t]}
-                alt=""
-                style={{ width: 24, height: 24 }}
-              />
-            ))}
-          </div>
+          <CapturedPieces
+            pieces={color === "w" ? blackCaptured : whiteCaptured}
+            color={color === "w" ? "w" : "b"}
+          />
 
           <Chessboard
             position={gameFen}
@@ -593,56 +483,15 @@ export default function OnlineGame({
           />
 
           {/* Captured pieces by me */}
-          <div style={{ display: "flex", gap: 3 }}>
-            {(color === "w" ? whiteCaptured : blackCaptured).map((t, idx) => (
-              <img
-                key={idx}
-                src={color === "w" ? pieceImages["b"][t] : pieceImages["w"][t]}
-                alt=""
-                style={{ width: 24, height: 24 }}
-              />
-            ))}
-          </div>
+          <CapturedPieces
+            pieces={color === "w" ? whiteCaptured : blackCaptured}
+            color={color === "w" ? "b" : "w"}
+          />
         </div>
 
         {/* RIGHT SIDE */}
         <div style={{ width: 510 }}>
-          {/* Keep this div to align the h3 with the board top */}
-          <div
-            style={{ display: "flex", flexDirection: "column", marginTop: 80 }}
-          >
-            <h3 style={{ marginTop: 0 }}>Card Deck</h3>
-
-            {/* Card selection area */}
-            {isMyTurn && !gameOver ? (
-              options.length > 0 ? (
-                choiceGrid
-              ) : (
-                <div style={{ color: "#777" }}>Waiting for cards…</div>
-              )
-            ) : (
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <div
-                  style={{
-                    width: 300,
-                    height: 260,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    color: "#777",
-                  }}
-                >
-                  Waiting for your cards…
-                </div>
-                <div>
-                  <div style={{ fontWeight: 700 }}>—</div>
-                  <div style={{ marginTop: 6, color: "#555", fontSize: 13 }}>
-                    The system will draw automatically when it's your turn.
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
+          <CardDisplay options={options} isMyTurn={isMyTurn} />
 
           {/* Resign and user color info */}
           <div style={{ marginTop: 18 }}>
@@ -697,72 +546,26 @@ export default function OnlineGame({
       )}
 
       {/* Game Over Modal */}
-      {showGameOverModal && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.5)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <div
-            style={{
-              background: "#fff",
-              padding: 20,
-              borderRadius: 8,
-              minWidth: 300,
-            }}
-          >
-            <h3>Game Over</h3>
-            <p>{gameOverMessage}</p>
-            <div style={{ marginTop: 12 }}>
-              {isFriendMode ? (
-                <>
-                  <button
-                    onClick={() => {
-                      socketRef.current.emit("rematch_request", { roomId });
-                    }}
-                    style={{ marginRight: 8 }}
-                  >
-                    Rematch
-                  </button>
-                  <button
-                    onClick={() => {
-                      socketRef.current.emit("end_friend_match", { roomId });
-                    }}
-                  >
-                    Back to Menu
-                  </button>
-                </>
-              ) : (
-                <>
-                  <button
-                    onClick={() => {
-                      setShowGameOverModal(false);
-                      setStatusText("Searching new opponent...");
-                      socketRef.current.emit("find_game");
-                    }}
-                    style={{ marginRight: 8 }}
-                  >
-                    Find New Opponent
-                  </button>
-                  <button
-                    onClick={() => {
-                      socketRef.current.emit("leave_match", { roomId });
-                      navigate("/");
-                    }}
-                  >
-                    Back to Menu
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      <GameOverModal
+        show={showGameOverModal}
+        message={gameOverMessage}
+        isFriendMode={isFriendMode}
+        onRematch={() => {
+          socketRef.current.emit("rematch_request", { roomId });
+        }}
+        onEndFriendMatch={() => {
+          socketRef.current.emit("end_friend_match", { roomId });
+        }}
+        onFindNewOpponent={() => {
+          setShowGameOverModal(false);
+          setStatusText("Searching new opponent...");
+          socketRef.current.emit("find_game");
+        }}
+        onLeaveMatch={() => {
+          socketRef.current.emit("leave_match", { roomId });
+          navigate("/");
+        }}
+      />
 
       {showRematchPrompt && (
         <div
