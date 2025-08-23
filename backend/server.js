@@ -85,7 +85,6 @@ io.on("connection", (socket) => {
     } else {
       waiting.push(socket.id);
       socket.emit("waiting");
-      console.log("Waiting players:", waiting.length);
     }
   });
 
