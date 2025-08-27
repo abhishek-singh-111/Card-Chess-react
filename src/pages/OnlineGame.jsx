@@ -8,6 +8,8 @@ import { toast } from "react-toastify";
 import CardDisplay from "../components/CardDisplay";
 import CapturedPieces from "../components/CapturedPieces";
 import GameOverModal from "../components/GameOverModal";
+import Timer from "../components/Timer";
+import { useLocation } from "react-router-dom";
 
 import {
   moveSound,
@@ -25,11 +27,17 @@ export default function OnlineGame({
   color: initialColor,
   fen: initialFen,
 }) {
+  console.log(externalSocket);
+
+  const location = useLocation();
+  const params = new URLSearchParams(location.search);
   const socketRef = useRef(null);
   const navigate = useNavigate();
 
-  // Detect if in friend mode
   const isFriendMode = !!externalSocket;
+  console.log(isFriendMode);
+
+  const selectedMode = params.get("mode") || "standard";
 
   // core state
   const [statusText, setStatusText] = useState("Connecting...");
@@ -49,6 +57,10 @@ export default function OnlineGame({
   const [blackCaptured, setBlackCaptured] = useState([]);
   const [isSearching, setIsSearching] = useState(true);
   const [showRematchPrompt, setShowRematchPrompt] = useState(false);
+  //New
+  const [timers, setTimers] = useState({ w: null, b: null });
+  const [mode, setMode] = useState("standard");
+
   const prevFenRef = useRef(new Chess().fen());
 
   const isMyTurn = useMemo(() => {
@@ -63,6 +75,8 @@ export default function OnlineGame({
       // --- Friend mode ---
       s = externalSocket;
       socketRef.current = s;
+      const m = params.get("mode") || "standard"; // always get mode from URL
+      setMode(m);
       setRoomId(initialRoomId);
       setColor(initialColor);
       setStatusText("Game started with friend.");
@@ -73,48 +87,22 @@ export default function OnlineGame({
       s.emit("request_initial_cards", { roomId: initialRoomId });
     } else {
       // --- Matchmaking mode ---
-      s = io(SERVER_URL, {
-        transports: ["websocket"],
-        reconnection: true,
-        reconnectionAttempts: Infinity,
-        reconnectionDelay: 500,
-        reconnectionDelayMax: 5000,
-        timeout: 20000,
-      });
+      s = io(SERVER_URL);
       socketRef.current = s;
       s.on("connect", () => {
-        // If we don't have a room yet, we are matchmaking. Otherwise we're reconnecting.
-        if (!roomId) {
-          setStatusText("Connected. Finding match...");
-          setIsSearching(true);
-          s.emit("find_game");
-        } else {
-          setStatusText("Reconnected. Attempting to rejoin your match…");
-          s.emit("rejoin_room", { roomId });
-        }
+        setStatusText("Connected. Finding match...");
+        setIsSearching(true);
+        //s.emit("find_game");
+        s.emit("find_game", { mode: selectedMode });
       });
     }
-
-    s.on("reconnect_attempt", () => {
-      setStatusText("Reconnecting…");
-    });
-
-    s.on("reconnect", () => {
-      if (roomId) {
-        s.emit("rejoin_room", { roomId });
-      }
-    });
-
-    s.on("connect_error", () => {
-      setStatusText("Connection error. Retrying…");
-    });
 
     s.on("waiting", () => {
       setIsSearching(true);
       setStatusText("Waiting for opponent...");
     });
 
-    s.on("match_found", ({ roomId: rid, color: col, fen }) => {
+    s.on("match_found", ({ roomId: rid, color: col, fen, mode: m }) => {
       setIsSearching(false);
       setRoomId(rid);
       setColor(col);
@@ -129,25 +117,18 @@ export default function OnlineGame({
       prevFenRef.current = fen;
       setWhiteCaptured([]);
       setBlackCaptured([]);
+      //New
+      setMode(m);
     });
 
+    // New
+    s.on("timer_update", (t) => setTimers(t));
+
     s.on("cards_drawn", ({ cards }) => {
-      // array from server
       setOptions(cards);
       setStatusText(
         "Your turn: move any piece that matches one of your cards."
       );
-    });
-
-    s.on("rejoined", ({ fen, status, lastMove, cards }) => {
-      const g = new Chess(fen);
-      setGame(g);
-      setGameFen(fen);
-      prevFenRef.current = fen;
-      if (cards && Array.isArray(cards)) setOptions(cards);
-      if (lastMove) setLastMoveSquares(lastMove);
-      setStatusText("Rejoined match.");
-      setGameOver(false);
     });
 
     s.on("game_state", ({ fen, status, lastMove }) => {
@@ -235,8 +216,8 @@ export default function OnlineGame({
     s.on("invalid_move", (reason) => {
       let msg = "";
       if (reason === "card_restriction")
-        msg = "Move not allowed by drawn card — try again.";
-      else if (reason === "illegal") msg = "Illegal move — try again.";
+        msg = "Move not allowed by drawn card â€” try again.";
+      else if (reason === "illegal") msg = "Illegal move â€” try again.";
       else if (reason === "not-your-turn") msg = "It's not your turn.";
       else if (reason === "no-piece") msg = "No piece at source square.";
       else msg = "Invalid move: " + reason;
@@ -265,11 +246,9 @@ export default function OnlineGame({
     });
 
     s.on("opponent_left", () => {
-      let finalMsg = "Opponent left. You win!";
-      endSound.play();
-      setGameOverMessage(finalMsg);
-      setShowGameOverModal(true);
-      setGameOver(true);
+      setShowGameOverModal(false);
+      toast.info("Opponent left the room, redirecting to main menu");
+      setTimeout(() => navigate("/"), 4000);
     });
 
     // NEW: Rematch handlers (friend mode)
@@ -334,6 +313,29 @@ export default function OnlineGame({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [navigate, externalSocket]);
+
+  // Handle browser back button (Online + Friend mode)
+  useEffect(() => {
+    const handleBack = () => {
+      if (!socketRef.current || !roomId) return;
+
+      if (isFriendMode) {
+        // Friend game â†’ behave like disconnect
+        socketRef.current.emit("leave_match", { roomId });
+        navigate("/");
+      } else {
+        // Online matchmaking â†’ same as Back to Menu button
+        socketRef.current.emit("leave_match", { roomId });
+        navigate("/");
+      }
+    };
+
+    window.addEventListener("popstate", handleBack);
+
+    return () => {
+      window.removeEventListener("popstate", handleBack);
+    };
+  }, [roomId, isFriendMode, navigate]);
 
   function getLegalMoveSquares(square) {
     const moves = game.moves({ square, verbose: true }) || [];
@@ -443,7 +445,6 @@ export default function OnlineGame({
       return;
     }
     if (performMoveIfValid(selectedFrom, square)) {
-      // sent
     } else {
       if (
         piece &&
@@ -511,6 +512,14 @@ export default function OnlineGame({
           <div style={{ marginBottom: 6 }}>
             {statusText || (isMyTurn ? "Your turn" : "Opponent's turn")}
           </div>
+          {/* Opponentâ€™s timer above board */}
+          {mode === "timed" && (
+            <Timer
+              time={color === "w" ? timers.b : timers.w}
+              label="Opponent"
+              isActive={game.turn() !== color}
+            />
+          )}
           {/* Captured pieces by opponent */}
           <CapturedPieces
             pieces={color === "w" ? blackCaptured : whiteCaptured}
@@ -526,6 +535,15 @@ export default function OnlineGame({
             onSquareRightClick={onSquareRightClick}
             customSquareStyles={getMergedStyles()}
           />
+
+          {/* Your timer below board */}
+          {mode === "timed" && (
+            <Timer
+              time={color === "w" ? timers.w : timers.b}
+              label="You"
+              isActive={game.turn() === color}
+            />
+          )}
 
           {/* Captured pieces by me */}
           <CapturedPieces
@@ -550,7 +568,7 @@ export default function OnlineGame({
               ))}
             <div style={{ marginTop: 12, color: "#666", fontSize: 15 }}>
               <strong>Your color:</strong>{" "}
-              {color === "w" ? "White" : color === "b" ? "Black" : "—"}
+              {color === "w" ? "White" : color === "b" ? "Black" : "â€”"}
             </div>
           </div>
         </div>
