@@ -55,26 +55,46 @@ function smartDrawFor(g) {
 }
 
 io.on("connection", (socket) => {
-  socket.on("find_game", () => {
-    if (waiting.length > 0) {
-      const other = waiting.shift();
+  socket.on("find_game", ({ mode }) => {
+    // default safety
+    if (mode !== "timed") mode = "standard";
+
+    // find opponent with same mode
+    const idx = waiting.findIndex((w) => w.mode === mode);
+    if (idx !== -1) {
+      const otherEntry = waiting.splice(idx, 1)[0];
+      const other = otherEntry.id;
       const roomId = `room-${socket.id.slice(0, 6)}-${other.slice(0, 6)}`;
       const game = new Chess();
       const players = { white: other, black: socket.id };
-      rooms.set(roomId, { game, players, drawn: {}, state: "active" });
+      rooms.set(roomId, {
+        game,
+        players,
+        drawn: {},
+        state: "active",
+        mode,
+        timers: { w: 600, b: 600 },
+        interval: null,
+      });
 
       socket.join(roomId);
       const otherSock = io.sockets.sockets.get(other);
       if (otherSock) otherSock.join(roomId);
 
-      io.to(other).emit("match_found", { roomId, color: "w", fen: game.fen() });
+      io.to(other).emit("match_found", {
+        roomId,
+        color: "w",
+        fen: game.fen(),
+        mode,
+      });
       io.to(socket.id).emit("match_found", {
         roomId,
         color: "b",
         fen: game.fen(),
+        mode,
       });
 
-      // Draw for white
+      // Draw cards for white
       const whiteSid = players.white;
       const cardChoices = smartDrawFor(game);
       rooms.get(roomId).drawn[whiteSid] = {
@@ -83,22 +103,76 @@ io.on("connection", (socket) => {
       };
       io.to(whiteSid).emit("cards_drawn", { cards: cardChoices });
     } else {
-      waiting.push(socket.id);
+      waiting.push({ id: socket.id, mode });
       socket.emit("waiting");
     }
   });
 
-  socket.on("create_room", () => {
+  // --- NEW: Start timer interval if timed game ---
+  function startTimer(roomId) {
+    const room = rooms.get(roomId);
+    if (!room || room.mode !== "timed") return;
+
+    // Avoid multiple intervals
+    if (room.interval) return;
+
+    room.interval = setInterval(() => {
+      if (!room || room.state !== "active") {
+        clearInterval(room.interval);
+        room.interval = null;
+        return;
+      }
+
+      const turn = room.game.turn(); // 'w' or 'b'
+      room.timers[turn] = Math.max(0, room.timers[turn] - 1);
+
+      // Emit to both players
+      io.to(roomId).emit("timer_update", room.timers);
+
+      // Timeout check
+      if (room.timers[turn] <= 0) {
+        endGame(roomId, "timeout", {
+          winner: turn === "w" ? "b" : "w",
+          message: `${turn === "w" ? "White" : "Black"} ran out of time!`,
+        });
+      }
+    }, 1000);
+  }
+
+  function endGame(roomId, reason, extra = {}) {
+    const room = rooms.get(roomId);
+    if (!room) return;
+
+    if (room.interval) {
+      clearInterval(room.interval);
+      room.interval = null;
+    }
+
+    room.state = "ended";
+
+    io.to(roomId).emit("gameOver", { reason, ...extra });
+  }
+
+  socket.on("create_room", ({ mode }) => {
+    if (mode !== "timed") mode = "standard";
     const roomId = `friend-${Math.random().toString(36).substr(2, 6)}`;
     const game = new Chess();
     const players = { white: socket.id, black: null };
-    rooms.set(roomId, { game, players, drawn: {}, state: "active" });
+    rooms.set(roomId, {
+      game,
+      players,
+      drawn: {},
+      state: "active",
+      mode,
+      timers: { w: 600, b: 600 },
+      interval: null,
+    });
 
     socket.join(roomId);
     socket.emit("room_created", { roomId });
   });
 
-  socket.on("check_room", ({ roomId }) => {
+  socket.on("check_room", ({ roomId, mode }) => {
     const room = rooms.get(roomId);
     if (!room) return socket.emit("error", "room-not-found");
     if (!isRoomCreatorPresent(roomId)) {
@@ -107,10 +181,15 @@ io.on("connection", (socket) => {
     }
     if (room.players.black) return socket.emit("error", "room-full");
 
-    socket.emit("room-ok", { roomId });
+    // Ensure we keep the mode passed by the client
+    if (mode) {
+      room.mode = mode;
+    }
+
+    socket.emit("room-ok", { roomId, mode: room.mode });
   });
 
-  socket.on("join_room", ({ roomId }) => {
+  socket.on("join_room", ({ roomId, mode }) => {
     const room = rooms.get(roomId);
     if (!room) return socket.emit("error", "room-not-found");
     if (!isRoomCreatorPresent(roomId)) {
@@ -127,14 +206,16 @@ io.on("connection", (socket) => {
       roomId,
       color: "w",
       fen: room.game.fen(),
+      mode: room.mode, // ðŸ”‘ send mode to client
     });
     io.to(room.players.black).emit("match_found", {
       roomId,
       color: "b",
       fen: room.game.fen(),
+      mode: room.mode, // ðŸ”‘ send mode to client
     });
 
-    // Draw for white
+    // draw cards for white
     const whiteSid = room.players.white;
     const cardChoices = smartDrawFor(room.game);
     room.drawn[whiteSid] = { options: cardChoices, chosen: null };
@@ -142,7 +223,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("cancel_search", () => {
-    const idx = waiting.indexOf(socket.id);
+    const idx = waiting.findIndex((w) => w.id === socket.id);
     if (idx !== -1) {
       waiting.splice(idx, 1);
     }
@@ -207,6 +288,11 @@ io.on("connection", (socket) => {
 
     game.move({ from, to, promotion: "q" });
 
+    //New
+    if (room.mode === "timed") {
+      startTimer(roomId);
+    }
+
     // consume only the used card
     room.drawn[socket.id].options = cardEntry.options.filter(
       (c) => c !== usedCard
@@ -251,7 +337,7 @@ io.on("connection", (socket) => {
       reason: "resign",
       resignedId: socket.id,
     });
-    room.state = "ended"; // keep room, allow winner’s modal to persist
+    room.state = "ended"; // keep room, allow winnerâ€™s modal to persist
   });
 
   socket.on("leave_match", ({ roomId }) => {
@@ -265,7 +351,7 @@ io.on("connection", (socket) => {
       socket.to(roomId).emit("opponent_left");
       rooms.delete(roomId);
     } else {
-      // Game already ended → just let this player leave quietly
+      // Game already ended â†’ just let this player leave quietly
       if (isWhite) room.players.white = null;
       if (isBlack) room.players.black = null;
 
@@ -322,6 +408,11 @@ io.on("connection", (socket) => {
       // Redraw cards for white to start
       const whiteSid = room.players.white;
       const cardChoices = smartDrawFor(newGame);
+      room.timers = { w: 600, b: 600 };
+      if (room.interval) {
+        clearInterval(room.interval);
+        room.interval = null;
+      }
       room.drawn[whiteSid] = { options: cardChoices, chosen: null };
       io.to(whiteSid).emit("cards_drawn", { cards: cardChoices });
     } else {
@@ -358,7 +449,7 @@ io.on("connection", (socket) => {
     let rejoined = false;
 
     if (room.players.white && !io.sockets.sockets.get(room.players.white)) {
-      // white was disconnected – assign this socket as white
+      // white was disconnected â€“ assign this socket as white
       room.players.white = socket.id;
       socket.join(roomId);
       rejoined = true;
@@ -366,7 +457,7 @@ io.on("connection", (socket) => {
       room.players.black &&
       !io.sockets.sockets.get(room.players.black)
     ) {
-      // black was disconnected – assign this socket as black
+      // black was disconnected â€“ assign this socket as black
       room.players.black = socket.id;
       socket.join(roomId);
       rejoined = true;
@@ -407,7 +498,7 @@ io.on("connection", (socket) => {
 
   socket.on("disconnect", () => {
     // Remove from waiting queue if present
-    const idx = waiting.indexOf(socket.id);
+    const idx = waiting.findIndex((w) => w.id === socket.id);
     if (idx !== -1) {
       waiting.splice(idx, 1);
     }
@@ -420,7 +511,7 @@ io.on("connection", (socket) => {
       if (!role) continue;
 
       if (roomId.startsWith("friend-")) {
-        // Friend game → notify immediately
+        // Friend game â†’ notify immediately
         if (room.state === "active") {
           socket.to(roomId).emit("opponent_left");
           rooms.delete(roomId);
@@ -432,7 +523,7 @@ io.on("connection", (socket) => {
           }
         }
       } else {
-        // Online matchmaking → use grace timer
+        // Online matchmaking â†’ use grace timer
         if (disconnectTimers.has(roomId))
           clearTimeout(disconnectTimers.get(roomId));
         disconnectTimers.set(

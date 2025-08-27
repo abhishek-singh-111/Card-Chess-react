@@ -205,7 +205,7 @@ export default function AIGame() {
           <Chessboard
             position={gameFen}
             boardOrientation={color === "w" ? "white" : "black"}
-            boardWidth={560}
+            boardWidth={Math.min(window.innerWidth - 40, 560)}
             customSquareStyles={getMergedStyles(
               highlightSquares,
               lastMoveSquares

@@ -8,6 +8,8 @@ import { toast } from "react-toastify";
 import CardDisplay from "../components/CardDisplay";
 import CapturedPieces from "../components/CapturedPieces";
 import GameOverModal from "../components/GameOverModal";
+import Timer from "../components/Timer";
+import { useLocation } from "react-router-dom";
 
 import {
   moveSound,
@@ -25,10 +27,17 @@ export default function OnlineGame({
   color: initialColor,
   fen: initialFen,
 }) {
+  console.log(externalSocket);
+
+  const location = useLocation();
+  const params = new URLSearchParams(location.search);
   const socketRef = useRef(null);
   const navigate = useNavigate();
 
   const isFriendMode = !!externalSocket;
+  console.log(isFriendMode);
+
+  const selectedMode = params.get("mode") || "standard";
 
   // core state
   const [statusText, setStatusText] = useState("Connecting...");
@@ -48,6 +57,10 @@ export default function OnlineGame({
   const [blackCaptured, setBlackCaptured] = useState([]);
   const [isSearching, setIsSearching] = useState(true);
   const [showRematchPrompt, setShowRematchPrompt] = useState(false);
+  //New
+  const [timers, setTimers] = useState({ w: null, b: null });
+  const [mode, setMode] = useState("standard");
+
   const prevFenRef = useRef(new Chess().fen());
 
   const isMyTurn = useMemo(() => {
@@ -62,6 +75,8 @@ export default function OnlineGame({
       // --- Friend mode ---
       s = externalSocket;
       socketRef.current = s;
+      const m = params.get("mode") || "standard"; // always get mode from URL
+      setMode(m);
       setRoomId(initialRoomId);
       setColor(initialColor);
       setStatusText("Game started with friend.");
@@ -77,7 +92,8 @@ export default function OnlineGame({
       s.on("connect", () => {
         setStatusText("Connected. Finding match...");
         setIsSearching(true);
-        s.emit("find_game");
+        //s.emit("find_game");
+        s.emit("find_game", { mode: selectedMode });
       });
     }
 
@@ -86,7 +102,7 @@ export default function OnlineGame({
       setStatusText("Waiting for opponent...");
     });
 
-    s.on("match_found", ({ roomId: rid, color: col, fen }) => {
+    s.on("match_found", ({ roomId: rid, color: col, fen, mode: m }) => {
       setIsSearching(false);
       setRoomId(rid);
       setColor(col);
@@ -101,7 +117,12 @@ export default function OnlineGame({
       prevFenRef.current = fen;
       setWhiteCaptured([]);
       setBlackCaptured([]);
+      //New
+      setMode(m);
     });
+
+    // New
+    s.on("timer_update", (t) => setTimers(t));
 
     s.on("cards_drawn", ({ cards }) => {
       setOptions(cards);
@@ -195,8 +216,8 @@ export default function OnlineGame({
     s.on("invalid_move", (reason) => {
       let msg = "";
       if (reason === "card_restriction")
-        msg = "Move not allowed by drawn card — try again.";
-      else if (reason === "illegal") msg = "Illegal move — try again.";
+        msg = "Move not allowed by drawn card â€” try again.";
+      else if (reason === "illegal") msg = "Illegal move â€” try again.";
       else if (reason === "not-your-turn") msg = "It's not your turn.";
       else if (reason === "no-piece") msg = "No piece at source square.";
       else msg = "Invalid move: " + reason;
@@ -299,11 +320,11 @@ export default function OnlineGame({
       if (!socketRef.current || !roomId) return;
 
       if (isFriendMode) {
-        // Friend game → behave like disconnect
+        // Friend game â†’ behave like disconnect
         socketRef.current.emit("leave_match", { roomId });
         navigate("/");
       } else {
-        // Online matchmaking → same as Back to Menu button
+        // Online matchmaking â†’ same as Back to Menu button
         socketRef.current.emit("leave_match", { roomId });
         navigate("/");
       }
@@ -491,6 +512,14 @@ export default function OnlineGame({
           <div style={{ marginBottom: 6 }}>
             {statusText || (isMyTurn ? "Your turn" : "Opponent's turn")}
           </div>
+          {/* Opponentâ€™s timer above board */}
+          {mode === "timed" && (
+            <Timer
+              time={color === "w" ? timers.b : timers.w}
+              label="Opponent"
+              isActive={game.turn() !== color}
+            />
+          )}
           {/* Captured pieces by opponent */}
           <CapturedPieces
             pieces={color === "w" ? blackCaptured : whiteCaptured}
@@ -506,6 +535,15 @@ export default function OnlineGame({
             onSquareRightClick={onSquareRightClick}
             customSquareStyles={getMergedStyles()}
           />
+
+          {/* Your timer below board */}
+          {mode === "timed" && (
+            <Timer
+              time={color === "w" ? timers.w : timers.b}
+              label="You"
+              isActive={game.turn() === color}
+            />
+          )}
 
           {/* Captured pieces by me */}
           <CapturedPieces
@@ -530,7 +568,7 @@ export default function OnlineGame({
               ))}
             <div style={{ marginTop: 12, color: "#666", fontSize: 15 }}>
               <strong>Your color:</strong>{" "}
-              {color === "w" ? "White" : color === "b" ? "Black" : "—"}
+              {color === "w" ? "White" : color === "b" ? "Black" : "â€”"}
             </div>
           </div>
         </div>
