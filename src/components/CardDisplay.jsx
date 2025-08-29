@@ -107,6 +107,7 @@ const CardDisplay = ({
   isMobile = false,
   compact = false,
   availableHeight = null,
+  gameType = 'ai', // 'ai' or 'online'
 }) => {
   // Calculate dynamic card height (esp. mobile/compact)
   const getDynamicCardHeight = () => {
@@ -179,15 +180,17 @@ const CardDisplay = ({
   const waitingState = (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h3 className="font-bold text-white flex items-center gap-2">
-          <span className="text-blue-400">🤖</span>
-          AI Turn
-        </h3>
-        <div className="flex items-center gap-2">
-          <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse" />
-          <span className="text-blue-400 font-medium text-sm">Thinking...</span>
-        </div>
+      <h3 className="font-bold text-white flex items-center gap-2">
+        <span className="text-blue-400">{gameType === 'online' ? '👤' : '🤖'}</span>
+        {gameType === 'online' ? 'Opponent Turn' : 'AI Turn'}
+      </h3>
+      <div className="flex items-center gap-2">
+        <div className="w-2 h-2 bg-blue-400 rounded-full animate-pulse" />
+        <span className="text-blue-400 font-medium text-sm">
+          {gameType === 'online' ? 'Waiting...' : 'Thinking...'}
+        </span>
       </div>
+    </div>
 
       {/* Placeholder shimmer */}
       <div className="grid grid-cols-3 gap-4">
