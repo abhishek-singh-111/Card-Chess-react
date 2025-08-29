@@ -8,7 +8,6 @@ import { toast } from "react-toastify";
 import CardDisplay from "../components/CardDisplay";
 import CapturedPieces from "../components/CapturedPieces";
 import GameOverModal from "../components/GameOverModal";
-import Timer from "../components/Timer";
 import { useLocation } from "react-router-dom";
 
 import {
@@ -304,6 +303,7 @@ export default function OnlineGame({
         s.disconnect();
       }
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [navigate, externalSocket]);
 
   // Handle browser back button
