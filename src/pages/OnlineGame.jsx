@@ -778,6 +778,7 @@ export default function OnlineGame({
                     options={options}
                     isMyTurn={isMyTurn}
                     isMobile={true}
+                    gameType="online"
                     compact={true}
                     availableHeight={(() => {
                       if (typeof window === "undefined") return 120;
@@ -929,6 +930,7 @@ export default function OnlineGame({
                 <CardDisplay
                   options={options}
                   isMyTurn={isMyTurn}
+                  gameType="online"
                   isMobile={false}
                 />
 

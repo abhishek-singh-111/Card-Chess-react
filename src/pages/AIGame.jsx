@@ -5,9 +5,9 @@ import { Chess } from "chess.js";
 import { Chessboard } from "react-chessboard";
 import CardDisplay from "../components/CardDisplay";
 import CapturedPieces from "../components/CapturedPieces";
+import { makeSmartAIMove } from "../utils/smartAI";
 
 import {
-  buildAvailableCards,
   pickRandom,
   getLegalMoveSquares,
   isMoveAllowedByAnyCard,
@@ -21,7 +21,38 @@ import {
   endSound,
 } from "../utils/soundsUtil";
 
-// ✅ helper wrapper to avoid autoplay errors
+// Card generation logic (replicated from server.js)
+function buildAvailableCardsFromGame(g) {
+  const moves = g.moves({ verbose: true }) || [];
+  const cardSet = new Set();
+  moves.forEach((m) => {
+    const p = m.piece;
+    if (p === "p") cardSet.add(`pawn-${m.from[0]}`);
+    else if (p === "n") cardSet.add("knight");
+    else if (p === "b") cardSet.add("bishop");
+    else if (p === "r") cardSet.add("rook");
+    else if (p === "q") cardSet.add("queen");
+    else if (p === "k") cardSet.add("king");
+  });
+  return Array.from(cardSet).sort();
+}
+
+// Smart draw returns 1-3 cards (replicated from server.js)
+function smartDrawFor(g) {
+  const avail = buildAvailableCardsFromGame(g);
+  if (avail.length <= 3) {
+    // if fewer than 3 available, just return them
+    return avail;
+  }
+  const sample = [];
+  while (sample.length < 3) {
+    const pick = avail[Math.floor(Math.random() * avail.length)];
+    if (!sample.includes(pick)) sample.push(pick);
+  }
+  return sample;
+}
+
+// Helper wrapper to avoid autoplay errors
 function safePlay(audio) {
   if (!audio) return;
   const playPromise = audio.play();
@@ -50,7 +81,7 @@ export default function AIGame() {
 
   const navigate = useNavigate();
 
-  // ✅ Unlock audio on first user click
+  // Unlock audio on first user click
   useEffect(() => {
     const unlockAudio = () => {
       [moveSound, captureSound, checkSound, endSound].forEach((sound) => {
@@ -73,18 +104,7 @@ export default function AIGame() {
   useEffect(() => {
     if (gameOver) return;
     if (game.turn() === color) {
-      const avail = buildAvailableCards(game);
-      const picks =
-        avail.length <= 3
-          ? avail
-          : (() => {
-              const chosen = [];
-              while (chosen.length < 3) {
-                const p = pickRandom(avail);
-                if (!chosen.includes(p)) chosen.push(p);
-              }
-              return chosen;
-            })();
+      const picks = smartDrawFor(game);
       setOptions(picks);
       setStatusText("Your turn — pick a card");
     } else {
@@ -193,53 +213,47 @@ export default function AIGame() {
     return true;
   }
 
-  /** ---------------- SMART BOT LOGIC ---------------- **/
+  /** ---------------- ENHANCED BOT LOGIC ---------------- **/
 
   function doBotMove() {
     if (gameOver) return;
     const g = new Chess(game.fen());
-    const avail = buildAvailableCards(g);
-    const pool = avail.slice(0, 3);
-    console.log("🤖 AI candidate cards:", pool);
+    const pool = smartDrawFor(g); // Use same card logic as server
+    const aiColor = game.turn();
+    
+    //console.log(`🤖 AI (${aiColor}) turn - Available cards:`, pool);
 
-    const botCard = pickRandom(pool);
+    let chosenMove = null;
 
-    const moves = g.moves({ verbose: true });
-    const legalMoves = moves.filter((m) =>
-      isMoveAllowedByAnyCard(m.from, m.piece, [botCard])
-    );
-
-    console.log("🤖 BOT TURN");
-    console.log("Available cards:", avail);
-    console.log("Legal moves with this card:", legalMoves);
-
-    let chosen = null;
-
-    if (g.history().length < 8) {
-      chosen = pickOpeningMove(g, legalMoves);
-      if (chosen) console.log("Bot picked opening move:", chosen);
+    try {
+      chosenMove = makeSmartAIMove(g, pool, aiColor);
+      
+      // if (chosenMove) {
+      //   console.log(`🤖 AI selected move: ${chosenMove.san} (${chosenMove.from} -> ${chosenMove.to})`);
+      // }
+    } catch (error) {
+      // console.error("AI move calculation failed:", error);
+      // Fallback to original random logic
+      const moves = g.moves({ verbose: true });
+      const legalMoves = moves.filter((m) =>
+        isMoveAllowedByAnyCard(m.from, m.piece, pool)
+      );
+      chosenMove = legalMoves.length > 0 ? pickRandom(legalMoves) : null;
     }
 
-    if (!chosen && legalMoves.length) {
-      console.log("Bot evaluating moves with minimax...");
-      chosen = findBestMove(g, legalMoves, 3);
-      console.log("Best move selected:", chosen);
-    }
-
-    if (!chosen && legalMoves.length) {
-      chosen = pickRandom(legalMoves);
-      console.log("Fallback random move:", chosen);
-    }
-
-    if (!chosen) return;
+    // if (!chosenMove) {
+    //   console.log("🤖 No valid moves found");
+    //   return;
+    // }
 
     const moveObj = g.move({
-      from: chosen.from,
-      to: chosen.to,
+      from: chosenMove.from,
+      to: chosenMove.to,
       promotion: "q",
     });
 
-    setLastMoveSquares({ from: chosen.from, to: chosen.to });
+    setLastMoveSquares({ from: chosenMove.from, to: chosenMove.to });
+    
     if (moveObj && moveObj.captured) {
       safePlay(captureSound);
       setCapturedPieces((prev) => [
@@ -257,92 +271,6 @@ export default function AIGame() {
     setGameFen(g.fen());
     if (handleEndGameCheck(g)) return;
     setStatusText("Your turn!");
-  }
-
-  function pickOpeningMove(game, moves) {
-    if (!moves.length) return null;
-    const priorities = [
-      (m) => m.piece === "p" && ["e4", "d4", "e5", "d5"].includes(m.san),
-      (m) => m.piece === "n" && ["Nc3", "Nf3", "Nc6", "Nf6"].includes(m.san),
-      (m) =>
-        m.piece === "b" &&
-        (m.san.includes("c4") ||
-          m.san.includes("f4") ||
-          m.san.includes("c5") ||
-          m.san.includes("f5")),
-      (m) => m.san.includes("O-O"),
-    ];
-    for (let rule of priorities) {
-      const found = moves.find(rule);
-      if (found) return found;
-    }
-    return null;
-  }
-
-  function findBestMove(game, legalMoves, depth) {
-    let bestScore = -Infinity;
-    let bestMove = null;
-    for (let move of legalMoves) {
-      const gCopy = new Chess(game.fen());
-      gCopy.move({ from: move.from, to: move.to, promotion: "q" });
-      let score = minimax(gCopy, depth - 1, -Infinity, Infinity, false);
-      console.log(`Move ${move.san} scored ${score}`);
-      if (score > bestScore) {
-        bestScore = score;
-        bestMove = move;
-      }
-    }
-    return bestMove;
-  }
-
-  function minimax(game, depth, alpha, beta, isMaximizing) {
-    if (depth === 0 || game.isGameOver()) {
-      return evaluateBoard(game);
-    }
-
-    const moves = game.moves({ verbose: true });
-    if (isMaximizing) {
-      let maxEval = -Infinity;
-      for (let move of moves) {
-        const gCopy = new Chess(game.fen());
-        gCopy.move(move);
-        const evalScore = minimax(gCopy, depth - 1, alpha, beta, false);
-        maxEval = Math.max(maxEval, evalScore);
-        alpha = Math.max(alpha, evalScore);
-        if (beta <= alpha) break;
-      }
-      return maxEval;
-    } else {
-      let minEval = Infinity;
-      for (let move of moves) {
-        const gCopy = new Chess(game.fen());
-        gCopy.move(move);
-        const evalScore = minimax(gCopy, depth - 1, alpha, beta, true);
-        minEval = Math.min(minEval, evalScore);
-        beta = Math.min(beta, evalScore);
-        if (beta <= alpha) break;
-      }
-      return minEval;
-    }
-  }
-
-  function evaluateBoard(game) {
-    if (game.isCheckmate()) return game.turn() === "w" ? -9999 : 9999;
-    if (game.isDraw()) return 0;
-
-    const pieceValues = { p: 100, n: 320, b: 330, r: 500, q: 900, k: 20000 };
-    let evalScore = 0;
-
-    game.board().forEach((row) => {
-      row.forEach((piece) => {
-        if (piece) {
-          const val = pieceValues[piece.type];
-          evalScore += piece.color === "w" ? val : -val;
-        }
-      });
-    });
-
-    return evalScore;
   }
 
   /** ---------------- RESPONSIVE BOARD ---------------- **/
@@ -383,8 +311,6 @@ export default function AIGame() {
     setShowGameOverModal(false);
   };
 
-
-
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 relative overflow-hidden">
       {/* Enhanced animated background */}
@@ -400,7 +326,7 @@ export default function AIGame() {
       </div>
 
       <div className="relative z-10">
-        {/* MOBILE/TABLET LAYOUT - Redesigned for premium experience */}
+        {/* MOBILE/TABLET LAYOUT */}
         <div className="md:hidden">
           <div className="min-h-screen flex flex-col">
             {/* Status bar - Compact */}
@@ -416,9 +342,8 @@ export default function AIGame() {
               </div>
             </div>
 
-            {/* Chess board container - Full width, increased height */}
+            {/* Chess board container */}
             <div className="flex-1 min-h-0 flex flex-col">
-              {/* Full-width chess board */}
               <div className="relative bg-gradient-to-b from-slate-800/30 to-slate-700/30">
                 <Chessboard
                   position={gameFen}
@@ -431,12 +356,11 @@ export default function AIGame() {
                   onPieceDrop={onPieceDrop}
                   onSquareClick={onSquareClick}
                   customBoardStyle={{
-                    borderRadius: '0px', // No border radius for full-width effect
+                    borderRadius: '0px',
                     boxShadow: '0 4px 20px rgba(0, 0, 0, 0.4)',
                   }}
                 />
                 
-                {/* Subtle side gradients for visual enhancement */}
                 <div className="absolute inset-y-0 left-0 w-1 bg-gradient-to-r from-slate-900/80 to-transparent"></div>
                 <div className="absolute inset-y-0 right-0 w-1 bg-gradient-to-l from-slate-900/80 to-transparent"></div>
               </div>
@@ -447,7 +371,7 @@ export default function AIGame() {
                 <div className="px-3 py-2 border-b border-white/10">
                   <CapturedPieces
                     pieces={capturedPieces.filter((p) => p.color === color)}
-                    label="Your captures"
+                    label="AI captures"
                     chessComStyle={true}
                   />
                 </div>
@@ -456,12 +380,12 @@ export default function AIGame() {
                 <div className="px-3 py-2 border-b border-white/10">
                   <CapturedPieces
                     pieces={capturedPieces.filter((p) => p.color !== color)}
-                    label="AI captures"
+                    label="Your captures"
                     chessComStyle={true}
                   />
                 </div>
 
-                {/* Cards section - Always visible with dynamic sizing */}
+                {/* Cards section */}
                 <div className="flex-1 px-3 py-3 border-b border-white/10 min-h-0">
                   <CardDisplay 
                     options={options} 
@@ -469,19 +393,18 @@ export default function AIGame() {
                     isMobile={true}
                     compact={true}
                     availableHeight={(() => {
-                      // Calculate available height for cards section - increased space allocation
                       if (typeof window === 'undefined') return 120;
                       
-                      const statusHeight = 40;     // Status bar
-                      const boardHeight = window.innerWidth; // Full width board is square
-                      const capturedHeight = 80;   // Both captured pieces sections
-                      const controlsHeight = 70;   // Menu buttons
-                      const padding = 16;          // Reduced padding since we removed hint text
+                      const statusHeight = 40;
+                      const boardHeight = window.innerWidth;
+                      const capturedHeight = 80;
+                      const controlsHeight = 70;
+                      const padding = 16;
                       
                       const usedHeight = statusHeight + boardHeight + capturedHeight + controlsHeight + padding;
                       const availableSpace = window.innerHeight - usedHeight;
                       
-                      return Math.max(120, availableSpace); // Increased minimum height
+                      return Math.max(120, availableSpace);
                     })()}
                   />
                 </div>
@@ -509,7 +432,7 @@ export default function AIGame() {
           </div>
         </div>
 
-        {/* DESKTOP LAYOUT - Unchanged */}
+        {/* DESKTOP LAYOUT */}
         <div className="hidden md:flex h-screen">
           {/* Left side - Chess board with captured pieces */}
           <div className="flex-1 flex flex-col justify-center items-center px-4 py-4">
@@ -517,7 +440,7 @@ export default function AIGame() {
             <div className="w-full max-w-4xl mb-2">
               <CapturedPieces
                 pieces={capturedPieces.filter((p) => p.color === color)}
-                label="Your captures"
+                label="AI captures"
                 chessComStyle={true}
               />
             </div>
@@ -545,7 +468,7 @@ export default function AIGame() {
             <div className="w-full max-w-4xl mt-2">
               <CapturedPieces
                 pieces={capturedPieces.filter((p) => p.color !== color)}
-                label="AI captures"
+                label="Your captures"
                 chessComStyle={true}
               />
             </div>
@@ -578,7 +501,7 @@ export default function AIGame() {
                     </div>
                   </div>
 
-                  {/* Game tips - DESKTOP ONLY */}
+                  {/* Game tips */}
                   <div className="p-6 bg-gradient-to-br from-purple-500/10 to-blue-500/10 backdrop-blur-xl rounded-2xl border border-purple-400/20">
                     <h3 className="text-lg font-bold text-white mb-3 flex items-center gap-2">
                       <span>💡</span>
@@ -588,7 +511,7 @@ export default function AIGame() {
                       <li>• Cards determine which pieces you can move</li>
                       <li>• Click a piece then click destination to move</li>
                       <li>• Drag and drop pieces for quick moves</li>
-                      <li>• Plan your card usage strategically</li>
+                      <li>• AI uses advanced positional evaluation and tactics</li>
                     </ul>
                   </div>
                 </div>
@@ -598,7 +521,7 @@ export default function AIGame() {
         </div>
       </div>
 
-      {/* Enhanced Game Over Modal - Responsive */}
+      {/* Enhanced Game Over Modal */}
       {showGameOverModal && (
         <div className="fixed inset-0 flex items-center justify-center bg-black/60 backdrop-blur-sm z-50 p-4">
           <div className="relative">
