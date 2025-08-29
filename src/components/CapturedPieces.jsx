@@ -39,6 +39,7 @@ const pieceValues = {
 };
 
 export default function CapturedPieces({ pieces, color, label, chessComStyle = false }) {
+  // Safety check for pieces array
   if (!pieces || pieces.length === 0) {
     // In chess.com style, show empty state more subtly
     if (chessComStyle) {
@@ -70,16 +71,30 @@ export default function CapturedPieces({ pieces, color, label, chessComStyle = f
     );
   }
 
-  // Calculate total material value
-  const totalValue = pieces.reduce((sum, p) => {
+  // Filter out any undefined/null values and calculate total material value
+  const validPieces = pieces.filter(p => p != null);
+  const totalValue = validPieces.reduce((sum, p) => {
     const pieceType = typeof p === "object" ? p.type : p;
-    return sum + pieceValues[pieceType];
+    return sum + (pieceValues[pieceType] || 0);
   }, 0);
 
   // Group pieces by type for better display
-  const groupedPieces = pieces.reduce((acc, p) => {
+  const groupedPieces = validPieces.reduce((acc, p) => {
     const pieceType = typeof p === "object" ? p.type : p;
-    const pieceColor = typeof p === "object" ? p.color : color;
+    // FIX: Determine the piece color correctly
+    // Since captured pieces are stored as strings (piece types only),
+    // we need to infer the color from the context
+    let pieceColor;
+    if (typeof p === "object" && p.color) {
+      pieceColor = p.color;
+    } else {
+      // For captured pieces, we need to determine the color based on which array this is
+      // If this is whiteCaptured array, these are white pieces that were captured
+      // If this is blackCaptured array, these are black pieces that were captured
+      // The color prop should indicate which pieces these are
+      pieceColor = color || (label && label.includes("Your") ? "w" : "b");
+    }
+    
     const key = `${pieceColor}-${pieceType}`;
     
     if (!acc[key]) {
@@ -97,40 +112,48 @@ export default function CapturedPieces({ pieces, color, label, chessComStyle = f
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-white text-xs sm:text-sm font-medium truncate">{label}</span>
           <div className="px-1.5 py-0.5 bg-emerald-500/20 text-emerald-400 text-xs font-bold rounded-full border border-emerald-500/30 flex-shrink-0">
-            {pieces.length}
+            {validPieces.length}
           </div>
         </div>
         
         {/* Center - Pieces display (scrollable on very small screens) */}
         <div className="flex-1 mx-3 min-w-0">
           <div className="flex items-center gap-1 overflow-x-auto scrollbar-hide">
-            {Object.values(groupedPieces).map((group, index) => (
-              <div
-                key={index}
-                className="group relative flex items-center flex-shrink-0"
-              >
-                <div className="relative p-0.5 sm:p-1 bg-slate-700/40 rounded border border-slate-600/30 hover:bg-slate-600/50 hover:border-slate-500/50 transition-all duration-200 shadow-sm">
-                  <img
-                    src={pieceImages[group.color][group.type]}
-                    alt={`${group.color}${group.type}`}
-                    className="w-4 h-4 sm:w-5 sm:h-5 opacity-95 hover:opacity-100 transition-opacity duration-200 drop-shadow-sm"
-                  />
+            {Object.values(groupedPieces).map((group, index) => {
+              // Safety check for group properties
+              if (!group.color || !group.type || !pieceImages[group.color] || !pieceImages[group.color][group.type]) {
+                console.warn('Invalid piece data:', group);
+                return null;
+              }
+              
+              return (
+                <div
+                  key={index}
+                  className="group relative flex items-center flex-shrink-0"
+                >
+                  <div className="relative p-0.5 sm:p-1 bg-slate-700/40 rounded border border-slate-600/30 hover:bg-slate-600/50 hover:border-slate-500/50 transition-all duration-200 shadow-sm">
+                    <img
+                      src={pieceImages[group.color][group.type]}
+                      alt={`${group.color}${group.type}`}
+                      className="w-4 h-4 sm:w-5 sm:h-5 opacity-95 hover:opacity-100 transition-opacity duration-200 drop-shadow-sm"
+                    />
+                    
+                    {/* Count badge */}
+                    {group.count > 1 && (
+                      <div className="absolute -top-0.5 -right-0.5 w-3 h-3 sm:w-3.5 sm:h-3.5 bg-emerald-500 text-white text-xs font-bold rounded-full flex items-center justify-center border border-white/20 shadow-sm">
+                        <span className="text-xs leading-none">{group.count}</span>
+                      </div>
+                    )}
+                  </div>
                   
-                  {/* Count badge */}
-                  {group.count > 1 && (
-                    <div className="absolute -top-0.5 -right-0.5 w-3 h-3 sm:w-3.5 sm:h-3.5 bg-emerald-500 text-white text-xs font-bold rounded-full flex items-center justify-center border border-white/20 shadow-sm">
-                      <span className="text-xs leading-none">{group.count}</span>
-                    </div>
-                  )}
+                  {/* Tooltip - Hidden on mobile */}
+                  <div className="hidden sm:block absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-slate-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none z-10 shadow-lg">
+                    {group.count > 1 ? `${group.count} ` : ''}{pieceNames[group.type]}{group.count > 1 ? 's' : ''}
+                    <div className="absolute top-full left-1/2 transform -translate-x-1/2 border-2 border-transparent border-t-slate-900"></div>
+                  </div>
                 </div>
-                
-                {/* Tooltip - Hidden on mobile */}
-                <div className="hidden sm:block absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-slate-900 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none z-10 shadow-lg">
-                  {group.count > 1 ? `${group.count} ` : ''}{pieceNames[group.type]}{group.count > 1 ? 's' : ''}
-                  <div className="absolute top-full left-1/2 transform -translate-x-1/2 border-2 border-transparent border-t-slate-900"></div>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
@@ -155,7 +178,7 @@ export default function CapturedPieces({ pieces, color, label, chessComStyle = f
           <div className="flex items-center gap-2">
             <span className="text-sm font-semibold text-white">{label}</span>
             <div className="px-2 py-1 bg-emerald-500/20 text-emerald-400 text-xs font-bold rounded-full border border-emerald-500/30">
-              {pieces.length} {pieces.length === 1 ? 'piece' : 'pieces'}
+              {validPieces.length} {validPieces.length === 1 ? 'piece' : 'pieces'}
             </div>
           </div>
         )}
@@ -173,6 +196,12 @@ export default function CapturedPieces({ pieces, color, label, chessComStyle = f
       {/* Pieces display */}
       <div className="flex flex-wrap gap-2">
         {Object.values(groupedPieces).map((group, index) => {
+          // Safety check for group properties
+          if (!group.color || !group.type || !pieceImages[group.color] || !pieceImages[group.color][group.type]) {
+            console.warn('Invalid piece data:', group);
+            return null;
+          }
+          
           return (
             <div
               key={index}
@@ -195,7 +224,7 @@ export default function CapturedPieces({ pieces, color, label, chessComStyle = f
               </div>
               
               {/* Tooltip on hover */}
-              <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-slate-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none z-10">
+              <div className="hidden sm:block absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-slate-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity duration-200 whitespace-nowrap pointer-events-none z-10">
                 {group.count > 1 ? `${group.count} ` : ''}{pieceNames[group.type]}{group.count > 1 ? 's' : ''}
                 <div className="absolute top-full left-1/2 transform -translate-x-1/2 border-2 border-transparent border-t-slate-800"></div>
               </div>
