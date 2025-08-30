@@ -250,6 +250,16 @@ export default function OnlineGame({
       setTimeout(() => navigate("/"), 4000);
     });
 
+    const setupOpponentLeftHandler = () => {
+      s.off("opponent_left"); // Remove existing handler to avoid duplicates
+      s.on("opponent_left", () => {
+        setShowGameOverModal(false);
+        setShowRematchPrompt(false);
+        toast.info("Opponent left the room, redirecting to main menu");
+        setTimeout(() => navigate("/"), 4000);
+      });
+    };
+
     // Rematch handlers for friend mode
     if (isFriendMode) {
       s.on("rematch_request", ({ roomId: reqRoom }) => {
@@ -290,6 +300,12 @@ export default function OnlineGame({
           setShowRematchPrompt(false);
           setColor((prevColor) => prevColor);
           setStatusText("Rematch started!");
+
+          // Reset timers to initial values
+          setTimers({ w: 600, b: 600 });
+
+          setupOpponentLeftHandler();
+
           s.emit("request_initial_cards", { roomId: reqRoom });
         } else {
           navigate("/");
@@ -587,85 +603,83 @@ export default function OnlineGame({
             </div>
 
             <div className="px-3 py-2 border-b border-white/10">
-                  {mode === "timed" ? (
-                    // Chess.com style with pieces on left, timer on right
-                    <div className="flex items-center justify-between py-1.5 px-3 bg-slate-800/20 backdrop-blur-sm rounded-lg border border-slate-600/40">
-                      {/* Left side - Opponent info with captured pieces */}
-                      <div className="flex items-center gap-2 flex-1 min-w-0">
-                        <div className="w-8 h-8 bg-slate-600 rounded-full flex items-center justify-center flex-shrink-0">
-                          <span className="text-white text-sm font-bold">
-                            {color === "w" ? "B" : "W"}
+              {mode === "timed" ? (
+                // Chess.com style with pieces on left, timer on right
+                <div className="flex items-center justify-between py-1.5 px-3 bg-slate-800/20 backdrop-blur-sm rounded-lg border border-slate-600/40">
+                  {/* Left side - Opponent info with captured pieces */}
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                    <div className="w-8 h-8 bg-slate-600 rounded-full flex items-center justify-center flex-shrink-0">
+                      <span className="text-white text-sm font-bold">
+                        {color === "w" ? "B" : "W"}
+                      </span>
+                    </div>
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-white text-xs font-medium truncate">
+                        Opponent
+                      </span>
+                      <div className="flex items-center gap-1 overflow-x-auto scrollbar-hide">
+                        {(color === "w" ? blackCaptured : whiteCaptured)
+                          .length === 0 ? (
+                          <span className="text-slate-500 text-xs">
+                            No pieces
                           </span>
-                        </div>
-                        <div className="flex flex-col min-w-0">
-                          <span className="text-white text-xs font-medium truncate">
-                            Opponent
+                        ) : (
+                          (color === "w" ? blackCaptured : whiteCaptured)
+                            .slice(0, 8)
+                            .map((piece, index) => (
+                              <div
+                                key={index}
+                                className="w-3 h-3 bg-slate-700/40 rounded border border-slate-600/30 flex items-center justify-center flex-shrink-0"
+                              >
+                                <img
+                                  src={`https://chessboardjs.com/img/chesspieces/wikipedia/${
+                                    color === "w" ? "w" : "b"
+                                  }${piece.toUpperCase()}.png`}
+                                  alt={piece}
+                                  className="w-2.5 h-2.5 opacity-90"
+                                />
+                              </div>
+                            ))
+                        )}
+                        {(color === "w" ? blackCaptured : whiteCaptured)
+                          .length > 8 && (
+                          <span className="text-slate-400 text-xs">
+                            +
+                            {(color === "w" ? blackCaptured : whiteCaptured)
+                              .length - 8}
                           </span>
-                          <div className="flex items-center gap-1 overflow-x-auto scrollbar-hide">
-                            {(color === "w" ? blackCaptured : whiteCaptured)
-                              .length === 0 ? (
-                              <span className="text-slate-500 text-xs">
-                                No pieces
-                              </span>
-                            ) : (
-                              (color === "w" ? blackCaptured : whiteCaptured)
-                                .slice(0, 8)
-                                .map((piece, index) => (
-                                  <div
-                                    key={index}
-                                    className="w-3 h-3 bg-slate-700/40 rounded border border-slate-600/30 flex items-center justify-center flex-shrink-0"
-                                  >
-                                    <img
-                                      src={`https://chessboardjs.com/img/chesspieces/wikipedia/${
-                                        color === "w" ? "w" : "b"
-                                      }${piece.toUpperCase()}.png`}
-                                      alt={piece}
-                                      className="w-2.5 h-2.5 opacity-90"
-                                    />
-                                  </div>
-                                ))
-                            )}
-                            {(color === "w" ? blackCaptured : whiteCaptured)
-                              .length > 8 && (
-                              <span className="text-slate-400 text-xs">
-                                +
-                                {(color === "w" ? blackCaptured : whiteCaptured)
-                                  .length - 8}
-                              </span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Right side - Timer */}
-                      <div className="flex items-center gap-2 flex-shrink-0">
-                        <div
-                          className={`w-2 h-2 rounded-full ${
-                            !isMyTurn ? "bg-emerald-400" : "bg-slate-600"
-                          }`}
-                        ></div>
-                        <div className="text-white font-mono font-bold text-sm">
-                          {(() => {
-                            const time = color === "w" ? timers.b : timers.w;
-                            if (time == null) return "--:--";
-                            const mins = Math.floor(time / 60);
-                            const secs = time % 60;
-                            return `${mins}:${secs
-                              .toString()
-                              .padStart(2, "0")}`;
-                          })()}
-                        </div>
+                        )}
                       </div>
                     </div>
-                  ) : (
-                    <CapturedPieces
-                      pieces={color === "w" ? blackCaptured : whiteCaptured}
-                      color={color === "w" ? "b" : "w"}
-                      label="Opponent captures"
-                      chessComStyle={true}
-                    />
-                  )}
+                  </div>
+
+                  {/* Right side - Timer */}
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <div
+                      className={`w-2 h-2 rounded-full ${
+                        !isMyTurn ? "bg-emerald-400" : "bg-slate-600"
+                      }`}
+                    ></div>
+                    <div className="text-white font-mono font-bold text-sm">
+                      {(() => {
+                        const time = color === "w" ? timers.b : timers.w;
+                        if (time == null) return "--:--";
+                        const mins = Math.floor(time / 60);
+                        const secs = time % 60;
+                        return `${mins}:${secs.toString().padStart(2, "0")}`;
+                      })()}
+                    </div>
+                  </div>
                 </div>
+              ) : (
+                <CapturedPieces
+                  pieces={color === "w" ? blackCaptured : whiteCaptured}
+                  color={color === "w" ? "b" : "w"}
+                  label="Opponent captures"
+                  chessComStyle={true}
+                />
+              )}
+            </div>
 
             {/* Chess board container */}
             <div className="flex-1 min-h-0 flex flex-col">
@@ -877,48 +891,113 @@ export default function OnlineGame({
 
           {/* Center space - Timers for timed mode */}
           {mode === "timed" && (
-            <div className="w-48 flex flex-col justify-center items-center px-4">
+            <div className="w-40 flex flex-col justify-center items-center px-2">
               {/* Opponent Timer */}
-              <div className="mb-8 p-4 bg-slate-800/40 backdrop-blur-sm rounded-2xl border border-slate-600/40 shadow-lg">
-                <div className="text-center">
-                  <div className="text-slate-400 text-sm mb-2">Opponent</div>
-                  <div className="text-white text-2xl font-mono font-bold">
-                    {(() => {
-                      const time = color === "w" ? timers.b : timers.w;
-                      if (time == null) return "--:--";
-                      const mins = Math.floor(time / 60);
-                      const secs = time % 60;
-                      return `${mins}:${secs.toString().padStart(2, "0")}`;
-                    })()}
+              <div className="mb-6 relative group">
+                {/* Glow effect */}
+                <div
+                  className={`absolute -inset-1 rounded-2xl blur-sm transition-all duration-300 ${
+                    !isMyTurn
+                      ? "bg-gradient-to-r from-red-500/30 to-orange-500/30 animate-pulse"
+                      : "bg-gradient-to-r from-slate-600/20 to-slate-500/20"
+                  }`}
+                ></div>
+
+                {/* Main timer container */}
+                <div
+                  className={`relative p-6 backdrop-blur-xl rounded-2xl border shadow-xl transition-all duration-300 ${
+                    !isMyTurn
+                      ? "bg-slate-800/90 border-red-400/40 shadow-red-500/20"
+                      : "bg-slate-800/60 border-slate-600/40 shadow-slate-900/20"
+                  }`}
+                >
+                  <div className="text-center">
+                    <div className="text-slate-300 text-sm font-medium mb-2">
+                      Opponent
+                    </div>
+
+                    {/* Timer display */}
+                    <div
+                      className={`font-mono font-bold text-3xl tracking-wider transition-colors duration-300 ${
+                        !isMyTurn ? "text-red-200" : "text-white"
+                      }`}
+                    >
+                      {(() => {
+                        const time = color === "w" ? timers.b : timers.w;
+                        if (time == null) return "-:-";
+                        const mins = Math.floor(time / 60);
+                        const secs = time % 60;
+                        return `${mins}:${secs.toString().padStart(2, "0")}`;
+                      })()}
+                    </div>
+
+                    {/* Active indicator */}
+                    <div className="flex justify-center mt-3">
+                      <div
+                        className={`w-4 h-4 rounded-full transition-all duration-300 ${
+                          !isMyTurn
+                            ? "bg-red-400 animate-pulse shadow-lg shadow-red-400/50"
+                            : "bg-slate-500"
+                        }`}
+                      ></div>
+                    </div>
                   </div>
-                  <div
-                    className={`w-3 h-3 rounded-full mx-auto mt-2 ${
-                      !isMyTurn
-                        ? "bg-emerald-400 animate-pulse"
-                        : "bg-slate-600"
-                    }`}
-                  ></div>
                 </div>
               </div>
 
+              {/* Visual separator */}
+              <div className="w-px h-8 bg-gradient-to-b from-transparent via-slate-600 to-transparent mb-6"></div>
+
               {/* Player Timer */}
-              <div className="mt-8 p-4 bg-slate-800/40 backdrop-blur-sm rounded-2xl border border-slate-600/40 shadow-lg">
-                <div className="text-center">
-                  <div className="text-slate-400 text-sm mb-2">You</div>
-                  <div className="text-white text-2xl font-mono font-bold">
-                    {(() => {
-                      const time = color === "w" ? timers.w : timers.b;
-                      if (time == null) return "--:--";
-                      const mins = Math.floor(time / 60);
-                      const secs = time % 60;
-                      return `${mins}:${secs.toString().padStart(2, "0")}`;
-                    })()}
+              <div className="mt-6 relative group">
+                {/* Glow effect */}
+                <div
+                  className={`absolute -inset-1 rounded-2xl blur-sm transition-all duration-300 ${
+                    isMyTurn
+                      ? "bg-gradient-to-r from-emerald-500/30 to-blue-500/30 animate-pulse"
+                      : "bg-gradient-to-r from-slate-600/20 to-slate-500/20"
+                  }`}
+                ></div>
+
+                {/* Main timer container */}
+                <div
+                  className={`relative p-6 backdrop-blur-xl rounded-2xl border shadow-xl transition-all duration-300 ${
+                    isMyTurn
+                      ? "bg-slate-800/90 border-emerald-400/40 shadow-emerald-500/20"
+                      : "bg-slate-800/60 border-slate-600/40 shadow-slate-900/20"
+                  }`}
+                >
+                  <div className="text-center">
+                    <div className="text-slate-300 text-sm font-medium mb-2">
+                      You
+                    </div>
+
+                    {/* Timer display */}
+                    <div
+                      className={`font-mono font-bold text-3xl tracking-wider transition-colors duration-300 ${
+                        isMyTurn ? "text-emerald-200" : "text-white"
+                      }`}
+                    >
+                      {(() => {
+                        const time = color === "w" ? timers.w : timers.b;
+                        if (time == null) return "-:-";
+                        const mins = Math.floor(time / 60);
+                        const secs = time % 60;
+                        return `${mins}:${secs.toString().padStart(2, "0")}`;
+                      })()}
+                    </div>
+
+                    {/* Active indicator */}
+                    <div className="flex justify-center mt-3">
+                      <div
+                        className={`w-4 h-4 rounded-full transition-all duration-300 ${
+                          isMyTurn
+                            ? "bg-emerald-400 animate-pulse shadow-lg shadow-emerald-400/50"
+                            : "bg-slate-500"
+                        }`}
+                      ></div>
+                    </div>
                   </div>
-                  <div
-                    className={`w-3 h-3 rounded-full mx-auto mt-2 ${
-                      isMyTurn ? "bg-emerald-400 animate-pulse" : "bg-slate-600"
-                    }`}
-                  ></div>
                 </div>
               </div>
             </div>
@@ -1045,12 +1124,41 @@ export default function OnlineGame({
           socketRef.current.emit("end_friend_match", { roomId });
         }}
         onFindNewOpponent={() => {
+          // Reset component state for new search
           setShowGameOverModal(false);
-          setStatusText("Searching new opponent...");
-          socketRef.current.emit("find_game");
+          setGameOver(false);
+          setIsSearching(true);
+          setStatusText("Searching for new opponent...");
+          setRoomId(null);
+          setColor(null);
+          setOptions([]);
+          setSelectedFrom(null);
+          setHighlightSquares({});
+          setLastMoveSquares(null);
+          setWhiteCaptured([]);
+          setBlackCaptured([]);
+          setTimers({ w: null, b: null });
+
+          // Reset game to initial state
+          const newGame = new Chess();
+          setGame(newGame);
+          setGameFen(newGame.fen());
+          prevFenRef.current = newGame.fen();
+
+          // Leave current room if still in one
+          if (roomId && socketRef.current) {
+            socketRef.current.emit("leave_match", { roomId });
+          }
+
+          // Start searching for new game with current mode
+          if (socketRef.current) {
+            socketRef.current.emit("find_game", { mode: mode || "standard" });
+          }
         }}
         onLeaveMatch={() => {
-          socketRef.current.emit("leave_match", { roomId });
+          if (socketRef.current && roomId) {
+            socketRef.current.emit("leave_match", { roomId });
+          }
           navigate("/");
         }}
       />

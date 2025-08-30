@@ -340,28 +340,57 @@ io.on("connection", (socket) => {
     room.state = "ended"; // keep room, allow winnerâ€™s modal to persist
   });
 
+  // socket.on("leave_match", ({ roomId }) => {
+  //   const room = rooms.get(roomId);
+  //   if (!room) return;
+
+  //   const isWhite = room.players.white === socket.id;
+  //   const isBlack = room.players.black === socket.id;
+
+  //   if (room.state === "active") {
+  //     socket.to(roomId).emit("opponent_left");
+  //     rooms.delete(roomId);
+  //   } else {
+  //     // Game already ended â†’ just let this player leave quietly
+  //     if (isWhite) room.players.white = null;
+  //     if (isBlack) room.players.black = null;
+
+  //     // Delete room if empty
+  //     if (!room.players.white && !room.players.black) {
+  //       rooms.delete(roomId);
+  //     }
+  //   }
+  //   socket.leave(roomId);
+  // });
   socket.on("leave_match", ({ roomId }) => {
-    const room = rooms.get(roomId);
-    if (!room) return;
+  const room = rooms.get(roomId);
+  if (!room) return;
 
-    const isWhite = room.players.white === socket.id;
-    const isBlack = room.players.black === socket.id;
+  const isWhite = room.players.white === socket.id;
+  const isBlack = room.players.black === socket.id;
 
-    if (room.state === "active") {
-      socket.to(roomId).emit("opponent_left");
+  // Clear any running timer interval
+  if (room.interval) {
+    clearInterval(room.interval);
+    room.interval = null;
+  }
+
+  if (room.state === "active") {
+    // Game is active - notify opponent they left
+    socket.to(roomId).emit("opponent_left");
+    rooms.delete(roomId);
+  } else {
+    // Game already ended - just let this player leave quietly
+    if (isWhite) room.players.white = null;
+    if (isBlack) room.players.black = null;
+
+    // Delete room if empty
+    if (!room.players.white && !room.players.black) {
       rooms.delete(roomId);
-    } else {
-      // Game already ended â†’ just let this player leave quietly
-      if (isWhite) room.players.white = null;
-      if (isBlack) room.players.black = null;
-
-      // Delete room if empty
-      if (!room.players.white && !room.players.black) {
-        rooms.delete(roomId);
-      }
     }
-    socket.leave(roomId);
-  });
+  }
+  socket.leave(roomId);
+});
 
   socket.on("request_initial_cards", ({ roomId }) => {
     const room = rooms.get(roomId);
@@ -389,39 +418,80 @@ io.on("connection", (socket) => {
   });
 
   // Handle response to rematch (accept or reject)
+  // socket.on("rematch_response", ({ roomId, accepted }) => {
+  //   const room = rooms.get(roomId);
+  //   if (!room) return;
+
+  //   const requester =
+  //     socket.id === room.players.white
+  //       ? room.players.black
+  //       : room.players.white;
+
+  //   if (accepted) {
+  //     // Reset the room's Chess game
+  //     const newGame = new Chess();
+  //     room.game = newGame;
+  //     room.drawn = {};
+  //     // Send back acceptance boolean to both players
+  //     io.to(roomId).emit("rematch_response", { accepted, roomId });
+  //     // Redraw cards for white to start
+  //     const whiteSid = room.players.white;
+  //     const cardChoices = smartDrawFor(newGame);
+  //     room.timers = { w: 600, b: 600 };
+  //     if (room.interval) {
+  //       clearInterval(room.interval);
+  //       room.interval = null;
+  //     }
+  //     room.drawn[whiteSid] = { options: cardChoices, chosen: null };
+  //     io.to(whiteSid).emit("cards_drawn", { cards: cardChoices });
+  //   } else {
+  //     io.to(requester).emit("rematch_declined");
+  //     // Also return both to menu
+  //     io.to(socket.id).emit("return_home");
+  //     rooms.delete(roomId);
+  //   }
+  // });
   socket.on("rematch_response", ({ roomId, accepted }) => {
-    const room = rooms.get(roomId);
-    if (!room) return;
+  const room = rooms.get(roomId);
+  if (!room) return;
 
-    const requester =
-      socket.id === room.players.white
-        ? room.players.black
-        : room.players.white;
+  const requester =
+    socket.id === room.players.white
+      ? room.players.black
+      : room.players.white;
 
-    if (accepted) {
-      // Reset the room's Chess game
-      const newGame = new Chess();
-      room.game = newGame;
-      room.drawn = {};
-      // Send back acceptance boolean to both players
-      io.to(roomId).emit("rematch_response", { accepted, roomId });
-      // Redraw cards for white to start
-      const whiteSid = room.players.white;
-      const cardChoices = smartDrawFor(newGame);
-      room.timers = { w: 600, b: 600 };
-      if (room.interval) {
-        clearInterval(room.interval);
-        room.interval = null;
-      }
-      room.drawn[whiteSid] = { options: cardChoices, chosen: null };
-      io.to(whiteSid).emit("cards_drawn", { cards: cardChoices });
-    } else {
-      io.to(requester).emit("rematch_declined");
-      // Also return both to menu
-      io.to(socket.id).emit("return_home");
-      rooms.delete(roomId);
+  if (accepted) {
+    // Reset the room's Chess game
+    const newGame = new Chess();
+    room.game = newGame;
+    room.drawn = {};
+    room.state = "active"; // Ensure room state is active again
+    
+    // Reset and clear timers
+    room.timers = { w: 600, b: 600 };
+    if (room.interval) {
+      clearInterval(room.interval);
+      room.interval = null;
     }
-  });
+    
+    // Send back acceptance boolean to both players
+    io.to(roomId).emit("rematch_response", { accepted, roomId });
+    
+    // Emit updated timer values to both players
+    io.to(roomId).emit("timer_update", room.timers);
+    
+    // Redraw cards for white to start
+    const whiteSid = room.players.white;
+    const cardChoices = smartDrawFor(newGame);
+    room.drawn[whiteSid] = { options: cardChoices, chosen: null };
+    io.to(whiteSid).emit("cards_drawn", { cards: cardChoices });
+  } else {
+    io.to(requester).emit("rematch_declined");
+    // Also return both to menu
+    io.to(socket.id).emit("return_home");
+    rooms.delete(roomId);
+  }
+});
 
   socket.on("end_friend_match", ({ roomId }) => {
     const room = rooms.get(roomId);
