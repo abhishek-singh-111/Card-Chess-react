@@ -17,8 +17,8 @@ import {
   endSound,
 } from "../utils/soundsUtil";
 
-//const SERVER_URL = process.env.REACT_APP_SERVER_URL || "http://localhost:4000";
-const SERVER_URL = process.env.REACT_APP_SERVER_URL || "https://card-chess.onrender.com";
+const SERVER_URL = process.env.REACT_APP_SERVER_URL || "http://localhost:4000";
+//const SERVER_URL = process.env.REACT_APP_SERVER_URL || "https://card-chess.onrender.com";
 
 // Helper function to safely play audio
 function safePlay(audio) {
@@ -586,31 +586,7 @@ export default function OnlineGame({
               </div>
             </div>
 
-            {/* Chess board container */}
-            <div className="flex-1 min-h-0 flex flex-col">
-              <div className="relative bg-gradient-to-b from-slate-800/30 to-slate-700/30">
-                <Chessboard
-                  position={gameFen}
-                  boardOrientation={color === "w" ? "white" : "black"}
-                  boardWidth={calculateBoardSize()}
-                  customSquareStyles={getMergedStyles()}
-                  onPieceDrop={onPieceDrop}
-                  onSquareClick={onSquareClick}
-                  onSquareRightClick={onSquareRightClick}
-                  customBoardStyle={{
-                    borderRadius: "0px",
-                    boxShadow: "0 4px 20px rgba(0, 0, 0, 0.4)",
-                  }}
-                />
-
-                <div className="absolute inset-y-0 left-0 w-1 bg-gradient-to-r from-slate-900/80 to-transparent"></div>
-                <div className="absolute inset-y-0 right-0 w-1 bg-gradient-to-l from-slate-900/80 to-transparent"></div>
-              </div>
-
-              {/* Bottom section */}
-              <div className="flex-1 bg-slate-800/20 backdrop-blur-sm flex flex-col">
-                {/* Captured pieces with timers for mobile */}
-                <div className="px-3 py-2 border-b border-white/10">
+            <div className="px-3 py-2 border-b border-white/10">
                   {mode === "timed" ? (
                     // Chess.com style with pieces on left, timer on right
                     <div className="flex items-center justify-between py-1.5 px-3 bg-slate-800/20 backdrop-blur-sm rounded-lg border border-slate-600/40">
@@ -690,6 +666,31 @@ export default function OnlineGame({
                     />
                   )}
                 </div>
+
+            {/* Chess board container */}
+            <div className="flex-1 min-h-0 flex flex-col">
+              <div className="relative bg-gradient-to-b from-slate-800/30 to-slate-700/30">
+                <Chessboard
+                  position={gameFen}
+                  boardOrientation={color === "w" ? "white" : "black"}
+                  boardWidth={calculateBoardSize()}
+                  customSquareStyles={getMergedStyles()}
+                  onPieceDrop={onPieceDrop}
+                  onSquareClick={onSquareClick}
+                  onSquareRightClick={onSquareRightClick}
+                  customBoardStyle={{
+                    borderRadius: "0px",
+                    boxShadow: "0 4px 20px rgba(0, 0, 0, 0.4)",
+                  }}
+                />
+
+                <div className="absolute inset-y-0 left-0 w-1 bg-gradient-to-r from-slate-900/80 to-transparent"></div>
+                <div className="absolute inset-y-0 right-0 w-1 bg-gradient-to-l from-slate-900/80 to-transparent"></div>
+              </div>
+
+              {/* Bottom section */}
+              <div className="flex-1 bg-slate-800/20 backdrop-blur-sm flex flex-col">
+                {/* Captured pieces with timers for mobile */}
 
                 <div className="px-3 py-2 border-b border-white/10">
                   {mode === "timed" ? (
