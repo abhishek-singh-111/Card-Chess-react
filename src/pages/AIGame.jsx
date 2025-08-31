@@ -5,7 +5,9 @@ import { Chess } from "chess.js";
 import { Chessboard } from "react-chessboard";
 import CardDisplay from "../components/CardDisplay";
 import CapturedPieces from "../components/CapturedPieces";
-import { makeSmartAIMove } from "../utils/smartAI";
+// Import the new modular AI system
+import { makeSmartAIMove } from "../utils/enhancedSmartAI";
+import { getGamePhase, isEndgame } from "../utils/gamePhaseDetector";
 
 import {
   pickRandom,
@@ -213,19 +215,22 @@ export default function AIGame() {
     return true;
   }
 
-  /** ---------------- ENHANCED BOT LOGIC ---------------- **/
+  /** Enhanced Bot Logic with Phase Detection **/
 
   function doBotMove() {
     if (gameOver) return;
     const g = new Chess(game.fen());
     const pool = smartDrawFor(g); // Use same card logic as server
     const aiColor = game.turn();
+    const currentPhase = getGamePhase(g);
+    const inEndgame = isEndgame(g);
     
     //console.log(`🤖 AI (${aiColor}) turn - Available cards:`, pool);
 
     let chosenMove = null;
 
     try {
+      // Use the enhanced modular AI system
       chosenMove = makeSmartAIMove(g, pool, aiColor);
       
       // if (chosenMove) {
