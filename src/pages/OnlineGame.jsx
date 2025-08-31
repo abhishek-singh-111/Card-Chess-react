@@ -17,9 +17,9 @@ import {
   endSound,
 } from "../utils/soundsUtil";
 
-//const SERVER_URL = process.env.REACT_APP_SERVER_URL || "http://localhost:4000";
+const SERVER_URL = process.env.REACT_APP_SERVER_URL || "http://localhost:4000";
 //const SERVER_URL = process.env.REACT_APP_SERVER_URL || "https://card-chess.onrender.com";
-const SERVER_URL = process.env.REACT_APP_SERVER_URL || "https://cardchess-backend.fly.dev";
+//const SERVER_URL = process.env.REACT_APP_SERVER_URL || "https://cardchess-backend.fly.dev";
 
 // Helper function to safely play audio
 function safePlay(audio) {
@@ -92,7 +92,11 @@ export default function OnlineGame({
       prevFenRef.current = initialFen;
       s.emit("request_initial_cards", { roomId: initialRoomId });
     } else {
-      s = io(SERVER_URL);
+      //s = io(SERVER_URL);
+      s = io(SERVER_URL, {
+        forceNew: true, // Force new connection
+        transports: ["websocket", "polling"]
+      });
       socketRef.current = s;
       s.on("connect", () => {
         setStatusText("Connected. Finding match...");
