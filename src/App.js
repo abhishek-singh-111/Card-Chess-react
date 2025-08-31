@@ -17,7 +17,6 @@ const SERVER_URL = process.env.REACT_APP_SERVER_URL || "https://cardchess-backen
 export default function App() {
    //const [socket] = useState(() => io(SERVER_URL));
    const [socket] = useState(() => io(SERVER_URL, {
-    autoConnect: false, // Don't auto-connect
     transports: ["websocket", "polling"]
   }));
 

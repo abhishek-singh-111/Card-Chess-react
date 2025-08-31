@@ -1,23 +1,63 @@
+# fly.toml - Critical configuration for Socket.IO on Fly.io
+
 app = "cardchess-backend"
-kill_signal = "SIGINT"
-kill_timeout = 5
+primary_region = "iad"  # Use a single region to avoid multi-instance issues
 
 [build]
-  dockerfile = "Dockerfile"
 
-[[services]]
+[env]
+  NODE_ENV = "production"
+  PORT = "4000"
+
+[http_service]
   internal_port = 4000
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 1  # CRITICAL: Keep at least 1 machine running
+  max_machines_running = 1  # CRITICAL: Limit to 1 machine to avoid sticky session issues
+
+[[http_service.checks]]
+  grace_period = "10s"
+  interval = "30s"
+  method = "GET"
+  timeout = "5s"
+  path = "/health"
+
+# CRITICAL: Configure for sticky sessions
+[http_service.concurrency]
+  type = "connections"
+  hard_limit = 1000
+  soft_limit = 800
+
+# WebSocket-specific configuration
+[[services]]
   protocol = "tcp"
+  internal_port = 4000
 
   [[services.ports]]
-    handlers = ["http"]
     port = 80
+    handlers = ["http"]
 
   [[services.ports]]
-    handlers = ["tls", "http"]
     port = 443
+    handlers = ["tls", "http"]
 
-  [[services.tcp_checks]]
-    interval = "15s"
-    timeout = "2s"
-    restart_limit = 0
+  # CRITICAL: HTTP upgrade configuration for WebSockets
+  [services.http_checks]
+    interval = "30s"
+    timeout = "10s"
+    grace_period = "10s"
+    method = "GET"
+    path = "/health"
+
+# Machine configuration optimized for Socket.IO
+[vm]
+  cpu_kind = "shared"
+  cpus = 1
+  memory_mb = 512
+
+# Prevent auto-scaling to maintain single instance
+[scaling]
+  min_machines_running = 1
+  max_machines_running = 1
