@@ -663,7 +663,7 @@ export default function OnlineGame({
                     <div className="text-white font-mono font-bold text-sm">
                       {(() => {
                         const time = color === "w" ? timers.b : timers.w;
-                        if (time == null) return "--:--";
+                        if (time == null) return "10:00";
                         const mins = Math.floor(time / 60);
                         const secs = time % 60;
                         return `${mins}:${secs.toString().padStart(2, "0")}`;
@@ -767,7 +767,7 @@ export default function OnlineGame({
                         <div className="text-white font-mono font-bold text-sm">
                           {(() => {
                             const time = color === "w" ? timers.w : timers.b;
-                            if (time == null) return "--:--";
+                            if (time == null) return "10:00";
                             const mins = Math.floor(time / 60);
                             const secs = time % 60;
                             return `${mins}:${secs
@@ -889,42 +889,42 @@ export default function OnlineGame({
             </div>
           </div>
 
-          {/* Center space - Timers for timed mode */}
+{/* Center space - Timers for timed mode */}
           {mode === "timed" && (
-            <div className="w-40 flex flex-col justify-center items-center px-2">
+            <div className="w-60 flex flex-col justify-center items-center -translate-x-11">
               {/* Opponent Timer */}
-              <div className="mb-6 relative group">
+              <div className="mb-8 relative group w-full max-w-[200px]">
                 {/* Glow effect */}
                 <div
-                  className={`absolute -inset-1 rounded-2xl blur-sm transition-all duration-300 ${
+                  className={`absolute -inset-2 rounded-3xl blur-md transition-all duration-300 ${
                     !isMyTurn
-                      ? "bg-gradient-to-r from-red-500/30 to-orange-500/30 animate-pulse"
+                      ? "bg-gradient-to-r from-red-500/40 to-orange-500/40 animate-pulse"
                       : "bg-gradient-to-r from-slate-600/20 to-slate-500/20"
                   }`}
                 ></div>
 
                 {/* Main timer container */}
                 <div
-                  className={`relative p-6 backdrop-blur-xl rounded-2xl border shadow-xl transition-all duration-300 ${
+                  className={`relative p-8 backdrop-blur-xl rounded-3xl border-2 shadow-2xl transition-all duration-300 ${
                     !isMyTurn
-                      ? "bg-slate-800/90 border-red-400/40 shadow-red-500/20"
-                      : "bg-slate-800/60 border-slate-600/40 shadow-slate-900/20"
+                      ? "bg-slate-800/95 border-red-400/50 shadow-red-500/30"
+                      : "bg-slate-800/70 border-slate-600/40 shadow-slate-900/30"
                   }`}
                 >
                   <div className="text-center">
-                    <div className="text-slate-300 text-sm font-medium mb-2">
+                    <div className="text-slate-300 text-base font-semibold mb-3">
                       Opponent
                     </div>
 
                     {/* Timer display */}
                     <div
-                      className={`font-mono font-bold text-3xl tracking-wider transition-colors duration-300 ${
-                        !isMyTurn ? "text-red-200" : "text-white"
+                      className={`font-mono font-bold text-4xl tracking-wider transition-colors duration-300 ${
+                        !isMyTurn ? "text-red-100" : "text-white"
                       }`}
                     >
                       {(() => {
                         const time = color === "w" ? timers.b : timers.w;
-                        if (time == null) return "-:-";
+                        if (time == null) return "10:00";
                         const mins = Math.floor(time / 60);
                         const secs = time % 60;
                         return `${mins}:${secs.toString().padStart(2, "0")}`;
@@ -932,11 +932,11 @@ export default function OnlineGame({
                     </div>
 
                     {/* Active indicator */}
-                    <div className="flex justify-center mt-3">
+                    <div className="flex justify-center mt-4">
                       <div
-                        className={`w-4 h-4 rounded-full transition-all duration-300 ${
+                        className={`w-5 h-5 rounded-full transition-all duration-300 ${
                           !isMyTurn
-                            ? "bg-red-400 animate-pulse shadow-lg shadow-red-400/50"
+                            ? "bg-red-400 animate-pulse shadow-lg shadow-red-400/60"
                             : "bg-slate-500"
                         }`}
                       ></div>
@@ -946,41 +946,41 @@ export default function OnlineGame({
               </div>
 
               {/* Visual separator */}
-              <div className="w-px h-8 bg-gradient-to-b from-transparent via-slate-600 to-transparent mb-6"></div>
+              <div className="w-px h-12 bg-gradient-to-b from-transparent via-slate-500 to-transparent mb-8"></div>
 
               {/* Player Timer */}
-              <div className="mt-6 relative group">
+              <div className="mt-8 relative group w-full max-w-[200px]">
                 {/* Glow effect */}
                 <div
-                  className={`absolute -inset-1 rounded-2xl blur-sm transition-all duration-300 ${
+                  className={`absolute -inset-2 rounded-3xl blur-md transition-all duration-300 ${
                     isMyTurn
-                      ? "bg-gradient-to-r from-emerald-500/30 to-blue-500/30 animate-pulse"
+                      ? "bg-gradient-to-r from-emerald-500/40 to-blue-500/40 animate-pulse"
                       : "bg-gradient-to-r from-slate-600/20 to-slate-500/20"
                   }`}
                 ></div>
 
                 {/* Main timer container */}
                 <div
-                  className={`relative p-6 backdrop-blur-xl rounded-2xl border shadow-xl transition-all duration-300 ${
+                  className={`relative p-8 backdrop-blur-xl rounded-3xl border-2 shadow-2xl transition-all duration-300 ${
                     isMyTurn
-                      ? "bg-slate-800/90 border-emerald-400/40 shadow-emerald-500/20"
-                      : "bg-slate-800/60 border-slate-600/40 shadow-slate-900/20"
+                      ? "bg-slate-800/95 border-emerald-400/50 shadow-emerald-500/30"
+                      : "bg-slate-800/70 border-slate-600/40 shadow-slate-900/30"
                   }`}
                 >
                   <div className="text-center">
-                    <div className="text-slate-300 text-sm font-medium mb-2">
+                    <div className="text-slate-300 text-base font-semibold mb-3">
                       You
                     </div>
 
                     {/* Timer display */}
                     <div
-                      className={`font-mono font-bold text-3xl tracking-wider transition-colors duration-300 ${
-                        isMyTurn ? "text-emerald-200" : "text-white"
+                      className={`font-mono font-bold text-4xl tracking-wider transition-colors duration-300 ${
+                        isMyTurn ? "text-emerald-100" : "text-white"
                       }`}
                     >
                       {(() => {
                         const time = color === "w" ? timers.w : timers.b;
-                        if (time == null) return "-:-";
+                        if (time == null) return "10:00";
                         const mins = Math.floor(time / 60);
                         const secs = time % 60;
                         return `${mins}:${secs.toString().padStart(2, "0")}`;
@@ -988,11 +988,11 @@ export default function OnlineGame({
                     </div>
 
                     {/* Active indicator */}
-                    <div className="flex justify-center mt-3">
+                    <div className="flex justify-center mt-4">
                       <div
-                        className={`w-4 h-4 rounded-full transition-all duration-300 ${
+                        className={`w-5 h-5 rounded-full transition-all duration-300 ${
                           isMyTurn
-                            ? "bg-emerald-400 animate-pulse shadow-lg shadow-emerald-400/50"
+                            ? "bg-emerald-400 animate-pulse shadow-lg shadow-emerald-400/60"
                             : "bg-slate-500"
                         }`}
                       ></div>
