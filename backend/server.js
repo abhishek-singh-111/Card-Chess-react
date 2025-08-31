@@ -28,7 +28,7 @@ const io = new Server(server, {
   },
   pingInterval: 10000,
   pingTimeout: 30000,
-  transports: ["websocket"]
+  transports: ["websocket", "polling"]
 });
 
 app.get("/", (req, res) => {
