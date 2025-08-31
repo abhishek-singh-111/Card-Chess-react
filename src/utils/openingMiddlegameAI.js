@@ -200,6 +200,9 @@ function getOpeningBonus(piece, square, game) {
         bonus += 40;
       }
       break;
+
+      default:
+      break;
   }
   
   return bonus;
@@ -237,6 +240,9 @@ function getMiddlegameBonus(piece, square, game) {
       if (isOutpost(square, piece, game)) {
         bonus += 60;
       }
+      break;
+
+            default:
       break;
   }
   
@@ -489,6 +495,10 @@ function evaluateSafeDevelopment(game, move, piece, color) {
           reasons.push("Central pawn control");
         }
         break;
+
+
+              default:
+      break;
     }
   } else {
     reasons.push("Development square unsafe");
@@ -577,176 +587,9 @@ function countAttackersOnSquare(game, square, attackerColor) {
   }).length;
 }
 
-/**
- * Evaluate opening-specific move qualities
- */
-function evaluateOpeningMove(game, move, piece, color) {
-  let score = 0;
-  const reasons = [];
-  
-  switch (piece.type) {
-    case 'p':
-      // Central pawn moves
-      if (['d4', 'e4', 'd5', 'e5'].includes(move.to)) {
-        score += 120;
-        reasons.push("Central pawn control");
-      }
-      // Don't move same pawn twice early
-      if (game.moveNumber() < 10 && hasMovedPawnBefore(game, move.from)) {
-        score -= 80;
-        reasons.push("Pawn moved again too early");
-      }
-      break;
-      
-    case 'n':
-      // Development to good squares
-      if (['c3', 'f3', 'c6', 'f6', 'd2', 'e2'].includes(move.to)) {
-        score += 100;
-        reasons.push("Knight to natural square");
-      }
-      // Avoid knight on rim
-      if (isRimSquare(move.to)) {
-        score -= 50;
-        reasons.push("Knight on rim is dim");
-      }
-      break;
-      
-    case 'b':
-      // Long diagonal bishops
-      if (isOnLongDiagonal(move.to)) {
-        score += 80;
-        reasons.push("Bishop on long diagonal");
-      }
-      // Early development
-      if (isOnBackRank(move.from) && !isOnBackRank(move.to)) {
-        score += 90;
-        reasons.push("Bishop development");
-      }
-      break;
-      
-    case 'q':
-      // Heavy penalty for early queen moves
-      if (game.moveNumber() < 8) {
-        score -= 300;
-        reasons.push("Queen too early in opening");
-      }
-      break;
-      
-    case 'k':
-      // Castling bonus
-      if (isCastlingMove(move)) {
-        score += 200;
-        reasons.push("Castling for safety");
-      }
-      break;
-  }
-  
-  return { score, reasons };
-}
 
-/**
- * Evaluate middlegame-specific move qualities
- */
-function evaluateMiddlegameMove(game, move, piece, color) {
-  let score = 0;
-  const reasons = [];
-  
-  switch (piece.type) {
-    case 'r':
-      // Open file occupation
-      if (isOnOpenFile(move.to, game)) {
-        score += 100;
-        reasons.push("Rook to open file");
-      }
-      // Seventh rank penetration
-      const rank = parseInt(move.to[1]);
-      if ((color === 'w' && rank === 7) || (color === 'b' && rank === 2)) {
-        score += 120;
-        reasons.push("Rook to seventh rank");
-      }
-      break;
-      
-    case 'q':
-      // Queen centralization in middlegame
-      if (['d4', 'd5', 'e4', 'e5'].includes(move.to)) {
-        score += 80;
-        reasons.push("Queen centralization");
-      }
-      // Active queen placement
-      if (isActiveQueenSquare(move.to, game, color)) {
-        score += 60;
-        reasons.push("Active queen placement");
-      }
-      break;
-      
-    case 'n':
-    case 'b':
-      // Outpost evaluation
-      if (isOutpost(move.to, piece, game)) {
-        score += 100;
-        reasons.push("Piece to strong outpost");
-      }
-      // Attack enemy pieces
-      if (attacksEnemyPieces(game, move, color)) {
-        score += 50;
-        reasons.push("Attacks enemy pieces");
-      }
-      break;
-      
-    case 'p':
-      // Pawn breaks in middlegame
-      if (isPawnBreak(game, move, color)) {
-        score += 80;
-        reasons.push("Strategic pawn break");
-      }
-      break;
-  }
-  
-  return { score, reasons };
-}
 
-/**
- * Evaluate move safety
- */
-function evaluateMoveSafety(game, move, piece, color) {
-  let score = 0;
-  const reasons = [];
-  
-  // Check if piece would be hanging after move
-  const tempGame = new Chess(game.fen());
-  tempGame.move(move);
-  
-  // Switch turn to see if opponent can capture our piece
-  const opponentMoves = tempGame.moves({ verbose: true });
-  const capturesOurPiece = opponentMoves.filter(m => m.to === move.to && m.captured);
-  
-  if (capturesOurPiece.length > 0) {
-    const pieceValue = PIECE_VALUES[piece.type];
-    
-    // Check if piece is defended
-    const defenders = countDefenders(game, move.to, color);
-    const attackers = capturesOurPiece.length;
-    
-    if (attackers > defenders) {
-      score -= pieceValue * 0.7;
-      reasons.push("Piece would be hanging");
-    } else if (attackers === defenders) {
-      // Equal trade - evaluate if favorable
-      const attackerValues = capturesOurPiece.map(m => {
-        const attackingPiece = tempGame.get(m.from);
-        return PIECE_VALUES[attackingPiece.type];
-      });
-      const minAttackerValue = Math.min(...attackerValues);
-      
-      if (pieceValue > minAttackerValue) {
-        score -= (pieceValue - minAttackerValue) * 0.3;
-        reasons.push("Unfavorable trade setup");
-      }
-    }
-  }
-  
-  return { score, reasons };
-}
+
 
 // Helper functions
 function isOnBackRank(square) {
@@ -754,17 +597,9 @@ function isOnBackRank(square) {
   return rank === 1 || rank === 8;
 }
 
-function isRimSquare(square) {
-  const file = square[0];
-  const rank = parseInt(square[1]);
-  return file === 'a' || file === 'h' || rank === 1 || rank === 8;
-}
 
-function isOnLongDiagonal(square) {
-  const longDiagonals = ['a1', 'b2', 'c3', 'd4', 'e5', 'f6', 'g7', 'h8', 
-                        'a8', 'b7', 'c6', 'd5', 'e4', 'f3', 'g2', 'h1'];
-  return longDiagonals.includes(square);
-}
+
+
 
 function isCastlingMove(move) {
   return Math.abs(move.from.charCodeAt(0) - move.to.charCodeAt(0)) > 1;
@@ -897,67 +732,10 @@ function canBeCapturedByPawn(square, opponentColor, game) {
   });
 }
 
-function hasMovedPawnBefore(game, pawnSquare) {
-  const history = game.history({ verbose: true });
-  const file = pawnSquare[0];
-  
-  return history.some(move => {
-    const piece = game.get(move.from);
-    return piece && piece.type === 'p' && move.from[0] === file;
-  });
-}
 
-function isActiveQueenSquare(square, game, color) {
-  // Queen is active if it attacks multiple enemy pieces or controls key squares
-  const tempGame = new Chess(game.fen());
-  const queenMoves = tempGame.moves({ square, verbose: true });
-  
-  const attacks = queenMoves.filter(move => move.captured);
-  const controlsCenter = queenMoves.some(move => 
-    ['d4', 'd5', 'e4', 'e5'].includes(move.to)
-  );
-  
-  return attacks.length >= 2 || controlsCenter;
-}
 
-function attacksEnemyPieces(game, move, color) {
-  const tempGame = new Chess(game.fen());
-  tempGame.move(move);
-  
-  const pieceMoves = tempGame.moves({ square: move.to, verbose: true });
-  return pieceMoves.some(m => m.captured);
-}
 
-function isPawnBreak(game, move, color) {
-  const piece = game.get(move.from);
-  if (piece.type !== 'p') return false;
-  
-  // Check if pawn move attacks enemy pawn or breaks pawn chain
-  const tempGame = new Chess(game.fen());
-  const moveObj = tempGame.move(move);
-  
-  return moveObj && (moveObj.captured === 'p' || 
-    breaksEnemyPawnChain(tempGame, move.to, color));
-}
 
-function breaksEnemyPawnChain(game, square, color) {
-  // Simplified pawn chain break detection
-  const opponentColor = color === 'w' ? 'b' : 'w';
-  const file = square[0];
-  const rank = parseInt(square[1]);
-  
-  // Check adjacent files for enemy pawns
-  const adjacentFiles = [
-    String.fromCharCode(file.charCodeAt(0) - 1),
-    String.fromCharCode(file.charCodeAt(0) + 1)
-  ];
-  
-  return adjacentFiles.some(adjFile => {
-    const adjSquare = adjFile + rank;
-    const piece = game.get(adjSquare);
-    return piece && piece.type === 'p' && piece.color === opponentColor;
-  });
-}
 
 function countDefenders(game, square, color) {
   const moves = game.moves({ verbose: true });
@@ -979,17 +757,3 @@ function countDefenders(game, square, color) {
 //   return Math.min(1, transition);
 // }
 
-function getTotalMaterial(game) {
-  let total = 0;
-  const board = game.board();
-  
-  for (let rank = 0; rank < 8; rank++) {
-    for (let file = 0; file < 8; file++) {
-      const piece = board[rank][file];
-      if (piece && piece.type !== "k") {
-        total += PIECE_VALUES[piece.type];
-      }
-    }
-  }
-  return total;
-}

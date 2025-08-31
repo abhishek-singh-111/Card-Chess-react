@@ -573,7 +573,7 @@ function calculateRepetitionPenalty(game, move, color) {
     const myMoves = last4.filter(m => m.color === color);
     
     if (myMoves.length >= 2) {
-      const [secondLast, last] = myMoves.slice(-2);
+      const [secondLast] = myMoves.slice(-2);
       const isOscillation = secondLast.from === move.to && secondLast.to === move.from;
       
       if (isOscillation) {
@@ -591,7 +591,7 @@ function calculateRepetitionPenalty(game, move, color) {
 function clearsPawnPath(game, kingMove, pawnSquare, color) {
   // Check if king move removes itself from pawn's promotion path
   const pawnFile = pawnSquare[0];
-  const pawnRank = parseInt(pawnSquare[1]);
+  // const pawnRank = parseInt(pawnSquare[1]);
   const kingFromFile = kingMove.from[0];
   const kingToFile = kingMove.to[0];
   

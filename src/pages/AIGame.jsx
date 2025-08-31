@@ -7,7 +7,7 @@ import CardDisplay from "../components/CardDisplay";
 import CapturedPieces from "../components/CapturedPieces";
 // Import the new modular AI system
 import { makeSmartAIMove } from "../utils/enhancedSmartAI";
-import { getGamePhase, isEndgame } from "../utils/gamePhaseDetector";
+// import { getGamePhase, isEndgame } from "../utils/gamePhaseDetector";
 
 import {
   pickRandom,
@@ -222,8 +222,8 @@ export default function AIGame() {
     const g = new Chess(game.fen());
     const pool = smartDrawFor(g); // Use same card logic as server
     const aiColor = game.turn();
-    const currentPhase = getGamePhase(g);
-    const inEndgame = isEndgame(g);
+    // const currentPhase = getGamePhase(g);
+    // const inEndgame = isEndgame(g);
     
     //console.log(`🤖 AI (${aiColor}) turn - Available cards:`, pool);
 

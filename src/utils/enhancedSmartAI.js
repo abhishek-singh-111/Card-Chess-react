@@ -7,13 +7,11 @@ import {
   getGamePhaseTransition 
 } from "./gamePhaseDetector";
 import { 
-  calculateOpeningMiddlegameMoveScore, 
-  evaluateOpeningMiddlegamePosition 
+  calculateOpeningMiddlegameMoveScore
+
 } from "./openingMiddlegameAI";
 import { 
   calculateEndgameMoveScore, 
-  evaluateEndgamePosition,
-  detectMatingPattern,
   findMatingSequence,
   wouldCauseStalemate,
   evaluatePawnAdvancement
@@ -82,23 +80,7 @@ function getPositionDanger(game, color) {
 /**
  * Count immediate threats to pieces of a specific color
  */
-function countImmediateThreats(game, targetColor) {
-  let threats = 0;
-  const moves = game.moves({ verbose: true });
-  
-  // Count enemy moves that capture our valuable pieces
-  const captureMoves = moves.filter(move => {
-    if (!move.captured) return false;
-    
-    const capturedPiece = game.get(move.to);
-    if (!capturedPiece || capturedPiece.color !== targetColor) return false;
-    
-    // Count threats to pieces worth knight or more
-    return getPieceValue(move.captured) >= 300;
-  });
-  
-  return Math.min(captureMoves.length, 3);
-}
+
 
 /**
  * Get piece value
@@ -415,7 +397,7 @@ function applyEmergencyAdjustments(game, move, evaluation, color) {
 
   // Enhanced risk assessment for moving into attacks
   if (wouldMoveIntoAttack(game, move, color)) {
-    const pieceValue = getPieceValue(piece.type);
+    // const pieceValue = getPieceValue(piece.type);
     const riskAssessment = assessMoveRisk(game, move, color);
     
     adjustedScore -= riskAssessment.penalty;
@@ -508,7 +490,7 @@ export function makeEnhancedCardChessMove(game, availableCards, aiColor) {
  * Validate endgame move to prevent dancing and ensure strategic progress
  */
 function validateEndgameMove(game, topMoves, color) {
-  const materialBalance = getMaterialBalance(game, color);
+  // const materialBalance = getMaterialBalance(game, color);
   const history = game.history({ verbose: true });
   
   // Check for recent repetition
@@ -517,7 +499,7 @@ function validateEndgameMove(game, topMoves, color) {
     const myLastMoves = lastMoves.filter(m => m.color === color);
     
     if (myLastMoves.length >= 2) {
-      const [secondLast, last] = myLastMoves.slice(-2);
+      const [secondLast] = myLastMoves.slice(-2);
       
       // Check if top move would create oscillation
       const topMove = topMoves[0].move;
@@ -527,7 +509,7 @@ function validateEndgameMove(game, topMoves, color) {
       );
       
       if (wouldOscillate) {
-        console.log(`⚠️ Preventing oscillation: ${topMove.san} would repeat ${secondLast.san}`);
+       // console.log(`⚠️ Preventing oscillation: ${topMove.san} would repeat ${secondLast.san}`);
         
         // Look for non-oscillating alternatives
         const alternatives = topMoves.slice(1).filter(sm => {

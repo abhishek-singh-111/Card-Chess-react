@@ -1,5 +1,5 @@
 // src/utils/gamePhaseDetector.js - Accurate Game Phase Detection
-import { Chess } from "chess.js";
+
 
 // Enhanced piece values for material calculation
 const PIECE_VALUES = {
