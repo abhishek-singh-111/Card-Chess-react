@@ -172,10 +172,10 @@ function endGame(roomId, reason, extra = {}) {
 
 // Enhanced connection handling for Fly.io
 io.engine.on("connection_error", (err) => {
-  console.log("Connection error:", err.req);
-  console.log("Error code:", err.code);
-  console.log("Error message:", err.message);
-  console.log("Error context:", err.context);
+  //console.log("Connection error:", err.req);
+  //console.log("Error code:", err.code);
+  //console.log("Error message:", err.message);
+  //console.log("Error context:", err.context);
 });
 
 io.on("connection", (socket) => {
@@ -719,5 +719,5 @@ process.on('SIGTERM', () => {
 
 server.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
-  console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+  //console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
 });

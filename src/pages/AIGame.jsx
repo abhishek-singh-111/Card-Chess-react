@@ -80,6 +80,7 @@ export default function AIGame() {
   const [gameOver, setGameOver] = useState(false);
   const [showGameOverModal, setShowGameOverModal] = useState(false);
   const [gameOverMessage, setGameOverMessage] = useState("");
+  const [selectedCard, setSelectedCard] = useState(null);
 
   const navigate = useNavigate();
 
@@ -147,31 +148,77 @@ export default function AIGame() {
   }
 
   function onSquareClick(square) {
-    if (!isMyTurn() || gameOver) return;
-    const g = new Chess(game.fen());
-    const piece = g.get(square);
+  if (!isMyTurn() || gameOver) return;
+  
+  const g = new Chess(game.fen());
+  const piece = g.get(square);
 
-    if (!selectedFrom) {
-      if (
-        piece &&
-        piece.color === color &&
-        isMoveAllowedByAnyCard(square, piece.type, options)
-      ) {
-        setSelectedFrom(square);
-        setHighlightSquares(getLegalMoveSquares(game, square));
-      }
-    } else {
-      const legal = g
-        .moves({ square: selectedFrom, verbose: true })
-        .find((m) => m.to === square);
-      if (legal) {
-        makePlayerMove(selectedFrom, square);
-      } else {
-        setSelectedFrom(null);
-        setHighlightSquares({});
+  // If a card is selected and we click on a square
+  if (selectedCard) {
+    // Check if clicked square has a piece that matches the selected card
+    if (piece && piece.color === color && isMoveAllowedByCard(selectedCard, square, piece.type)) {
+      // Select this piece as the source
+      setSelectedFrom(square);
+      setHighlightSquares(getLegalMoveSquares(game, square));
+      setStatusText("");
+      return;
+    }
+    
+    // Check if clicked square is a valid destination for any piece matching the card
+    const ALL_SQUARES = [];
+    for (let file of "abcdefgh") {
+      for (let rank = 1; rank <= 8; rank++) {
+        ALL_SQUARES.push(file + rank);
       }
     }
+    
+    for (let sourceSquare of ALL_SQUARES) {
+      const sourcePiece = g.get(sourceSquare);
+      if (!sourcePiece || sourcePiece.color !== color) continue;
+      
+      if (isMoveAllowedByCard(selectedCard, sourceSquare, sourcePiece.type)) {
+        const moves = g.moves({ square: sourceSquare, verbose: true }) || [];
+        const validMove = moves.find(m => m.to === square);
+        
+        if (validMove) {
+          // Found a valid move from a piece matching the card to this destination
+          makePlayerMove(sourceSquare, square);
+          setSelectedCard(null);
+          return;
+        }
+      }
+    }
+    
+    // If we get here, the click wasn't a valid destination, so clear selections
+    setSelectedCard(null);
+    setSelectedFrom(null);
+    setHighlightSquares({});
+    return;
   }
+
+  // Rest of your existing logic (when no card is selected)
+  if (!selectedFrom) {
+    if (
+      piece &&
+      piece.color === color &&
+      isMoveAllowedByAnyCard(square, piece.type, options)
+    ) {
+      setSelectedFrom(square);
+      setHighlightSquares(getLegalMoveSquares(game, square));
+    }
+  } else {
+    const legal = g
+      .moves({ square: selectedFrom, verbose: true })
+      .find((m) => m.to === square);
+    if (legal) {
+      makePlayerMove(selectedFrom, square);
+    } else {
+      setSelectedFrom(null);
+      setHighlightSquares({});
+      setSelectedCard(null);
+    }
+  }
+}
 
   function makePlayerMove(from, to) {
     const g = new Chess(game.fen());
@@ -277,6 +324,60 @@ export default function AIGame() {
     if (handleEndGameCheck(g)) return;
     setStatusText("Your turn!");
   }
+
+  function handleCardClick(cardId) {
+  if (!isMyTurn() || gameOver) return;
+  
+  if (selectedCard === cardId) {
+    // Deselect if same card clicked
+    setSelectedCard(null);
+    setSelectedFrom(null);
+    setHighlightSquares({});
+    return;
+  }
+  
+  setSelectedCard(cardId);
+  
+  // Find all pieces that match this card
+  const matchingSquares = [];
+  
+  // Generate all squares (you'll need this helper)
+  const ALL_SQUARES = [];
+  for (let file of "abcdefgh") {
+    for (let rank = 1; rank <= 8; rank++) {
+      ALL_SQUARES.push(file + rank);
+    }
+  }
+  
+  for (let square of ALL_SQUARES) {
+    const piece = game.get(square);
+    if (!piece || piece.color !== game.turn()) continue;
+    
+    // Check if piece matches the card (you'll need to add this helper function)
+    if (isMoveAllowedByCard(cardId, square, piece.type)) {
+      matchingSquares.push(square);
+    }
+  }
+  
+  // Highlight all legal moves for matching pieces
+  const allHighlights = {};
+  matchingSquares.forEach(square => {
+    const squareHighlights = getLegalMoveSquares(game, square);
+    Object.assign(allHighlights, squareHighlights);
+  });
+  
+  setHighlightSquares(allHighlights);
+  setSelectedFrom(null);
+}
+
+function isMoveAllowedByCard(card, srcSquare, pType) {
+  if (!card) return false;
+  if (card.startsWith("pawn-")) {
+    return pType === "p" && srcSquare[0] === card.split("-")[1];
+  }
+  const map = { knight: "n", bishop: "b", rook: "r", queen: "q", king: "k" };
+  return map[card] === pType;
+}
 
   /** ---------------- RESPONSIVE BOARD ---------------- **/
 
@@ -411,6 +512,9 @@ export default function AIGame() {
                       
                       return Math.max(120, availableSpace);
                     })()}
+                    gameType="ai"
+  onCardClick={handleCardClick}
+  selectedCard={selectedCard}
                   />
                 </div>
 
@@ -483,7 +587,14 @@ export default function AIGame() {
           <div className="w-[400px] 2xl:w-[480px] border-l border-white/10">
             <div className="h-full overflow-y-auto">
               <div className="p-6">
-                <CardDisplay options={options} isMyTurn={isMyTurn()} isMobile={false} />
+                <CardDisplay 
+                options={options} 
+                isMyTurn={isMyTurn()} 
+                isMobile={false}
+                gameType="ai"
+  onCardClick={handleCardClick}
+  selectedCard={selectedCard}
+                />
                 
                 {/* Game controls */}
                 <div className="mt-6 space-y-4">
