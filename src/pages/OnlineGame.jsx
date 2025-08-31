@@ -18,7 +18,8 @@ import {
 } from "../utils/soundsUtil";
 
 //const SERVER_URL = process.env.REACT_APP_SERVER_URL || "http://localhost:4000";
-const SERVER_URL = process.env.REACT_APP_SERVER_URL || "https://card-chess.onrender.com";
+//const SERVER_URL = process.env.REACT_APP_SERVER_URL || "https://card-chess.onrender.com";
+const SERVER_URL = process.env.REACT_APP_SERVER_URL || "https://cardchess-backend.fly.dev";
 
 // Helper function to safely play audio
 function safePlay(audio) {

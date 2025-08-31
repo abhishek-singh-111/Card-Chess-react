@@ -6,7 +6,14 @@ const { Chess } = require("chess.js");
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, { cors: { origin: "*" } });
+//const io = new Server(server, { cors: { origin: "*" } });
+const io = new Server(server, {
+  cors: { origin: "*" },
+  // keep-alive tuned for proxies / platforms (helps avoid mid-game drops)
+  pingInterval: 10000,   // send ping every 10s
+  pingTimeout: 30000,    // consider connection dead after 30s without pong
+  transports: ["websocket"] // prefer websocket (avoid polling fallback)
+});
 
 const PORT = process.env.PORT || 4000;
 
