@@ -68,6 +68,7 @@ export default function OnlineGame({
   const [timers, setTimers] = useState({ w: null, b: null });
   const [mode, setMode] = useState("standard");
   const [connectionError, setConnectionError] = useState(false);
+  const [selectedCard, setSelectedCard] = useState(null);
 
   const prevFenRef = useRef(new Chess().fen());
 
@@ -193,7 +194,6 @@ export default function OnlineGame({
       s.on("timer_update", (t) => setTimers(t));
 
       s.on("cards_drawn", ({ cards }) => {
-        console.log("Cards drawn:", cards);
         setOptions(cards);
         setStatusText(
           "Your turn: move any piece that matches one of your cards."
@@ -253,6 +253,7 @@ export default function OnlineGame({
         setGame(g);
         setGameFen(fen);
         setOptions([]);
+        setSelectedCard(null);
 
         if (status.isCheckmate) {
           setStatusText("Checkmate! Game over.");
@@ -291,6 +292,7 @@ export default function OnlineGame({
 
         setSelectedFrom(null);
         setHighlightSquares({});
+        setSelectedCard(null); // Add this line
       });
 
       s.on("gameOver", ({ reason, resignedId, message }) => {
@@ -522,46 +524,86 @@ export default function OnlineGame({
   }
 
   function onSquareClick(square) {
-    if (gameOver) return;
+  if (gameOver) return;
 
-    if (!isMyTurn) return;
-    if (!options || options.length === 0) {
-      setStatusText("Waiting for your cards.");
+  if (!isMyTurn) return;
+  if (!options || options.length === 0) {
+    setStatusText("Waiting for your cards.");
+    return;
+  }
+  
+  const piece = game.get(square);
+  const turn = game.turn();
+
+  // If a card is selected and we click on a square
+  if (selectedCard) {
+    // Check if clicked square has a piece that matches the selected card
+    if (piece && piece.color === turn && isMoveAllowedByCard(selectedCard, square, piece.type)) {
+      // Select this piece as the source
+      setSelectedFrom(square);
+      setHighlightSquares(getLegalMoveSquares(square));
+      setStatusText("");
       return;
     }
-    const piece = game.get(square);
-    const turn = game.turn();
-
-    if (!selectedFrom) {
-      if (
-        piece &&
-        piece.color === turn &&
-        isMoveAllowedByAnyCard(options, square, piece.type)
-      ) {
-        setSelectedFrom(square);
-        setHighlightSquares(getLegalMoveSquares(square));
-        setStatusText("");
-      } else {
-        if (piece && piece.color === turn)
-          setStatusText("That piece isn't allowed by your current cards.");
+    
+    // Check if clicked square is a valid destination for any piece matching the card
+    for (let sourceSquare of ALL_SQUARES) {
+      const sourcePiece = game.get(sourceSquare);
+      if (!sourcePiece || sourcePiece.color !== turn) continue;
+      
+      if (isMoveAllowedByCard(selectedCard, sourceSquare, sourcePiece.type)) {
+        const moves = game.moves({ square: sourceSquare, verbose: true }) || [];
+        const validMove = moves.find(m => m.to === square);
+        
+        if (validMove) {
+          // Found a valid move from a piece matching the card to this destination
+          if (performMoveIfValid(sourceSquare, square)) {
+            setSelectedCard(null);
+            return;
+          }
+        }
       }
-      return;
     }
-    if (performMoveIfValid(selectedFrom, square)) {
+    
+    // If we get here, the click wasn't a valid destination, so clear selections
+    setSelectedCard(null);
+    setSelectedFrom(null);
+    setHighlightSquares({});
+    return;
+  }
+
+  // Rest of your existing onSquareClick logic (when no card is selected)
+  if (!selectedFrom) {
+    if (
+      piece &&
+      piece.color === turn &&
+      isMoveAllowedByAnyCard(options, square, piece.type)
+    ) {
+      setSelectedFrom(square);
+      setHighlightSquares(getLegalMoveSquares(square));
+      setStatusText("");
     } else {
-      if (
-        piece &&
-        piece.color === turn &&
-        isMoveAllowedByAnyCard(options, square, piece.type)
-      ) {
-        setSelectedFrom(square);
-        setHighlightSquares(getLegalMoveSquares(square));
-      } else {
-        setSelectedFrom(null);
-        setHighlightSquares({});
-      }
+      if (piece && piece.color === turn)
+        setStatusText("That piece isn't allowed by your current cards.");
+    }
+    return;
+  }
+  
+  if (performMoveIfValid(selectedFrom, square)) {
+  } else {
+    if (
+      piece &&
+      piece.color === turn &&
+      isMoveAllowedByAnyCard(options, square, piece.type)
+    ) {
+      setSelectedFrom(square);
+      setHighlightSquares(getLegalMoveSquares(square));
+    } else {
+      setSelectedFrom(null);
+      setHighlightSquares({});
     }
   }
+}
 
   function onSquareRightClick() {
     setSelectedFrom(null);
@@ -604,6 +646,46 @@ export default function OnlineGame({
     }
     return squares;
   }
+
+  function handleCardClick(cardId) {
+  if (!isMyTurn || gameOver) return;
+  
+  if (selectedCard === cardId) {
+    // Deselect if same card clicked
+    setSelectedCard(null);
+    setSelectedFrom(null);
+    setHighlightSquares({});
+    return;
+  }
+  
+  setSelectedCard(cardId);
+  
+  // Find all pieces that match this card
+  const matchingSquares = [];
+  
+  for (let square of ALL_SQUARES) {
+    const piece = game.get(square);
+    if (!piece || piece.color !== game.turn()) continue;
+    
+    if (isMoveAllowedByCard(cardId, square, piece.type)) {
+      matchingSquares.push(square);
+    }
+  }
+  
+  // Highlight all legal moves for matching pieces
+  const allHighlights = {};
+  matchingSquares.forEach(square => {
+    const squareHighlights = getLegalMoveSquares(square);
+    Object.assign(allHighlights, squareHighlights);
+  });
+  
+  setHighlightSquares(allHighlights);
+  if (matchingSquares.length > 0) {
+    setSelectedFrom(matchingSquares[0]);
+  } else {
+    setSelectedFrom(null);
+  }
+}
 
   const ALL_SQUARES = genSquares();
 
@@ -872,6 +954,8 @@ export default function OnlineGame({
 
                     return Math.max(120, availableSpace);
                   })()}
+                  onCardClick={handleCardClick} // Add this
+  selectedCard={selectedCard} // Add this
                 />
               </div>
 
@@ -1061,6 +1145,8 @@ export default function OnlineGame({
                   isMyTurn={isMyTurn}
                   gameType="online"
                   isMobile={false}
+                  onCardClick={handleCardClick} // Add this
+  selectedCard={selectedCard} // Add this
                 />
 
                 {/* Game controls */}

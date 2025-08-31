@@ -7,6 +7,7 @@ function CardSVG({
   isMobile = false,
   compact = false,
   dynamicHeight = null,
+  isSelected = false,
 }) {
   if (!cardId) return null;
 
@@ -61,8 +62,10 @@ function CardSVG({
       {/* Main card body */}
       <div
         className={`
-          relative w-full h-full bg-gradient-to-br ${bgGradient} rounded-2xl
-          border border-white/20 shadow-xl backdrop-blur-sm overflow-hidden
+         relative w-full h-full bg-gradient-to-br ${bgGradient} rounded-2xl
+    border ${isSelected ? 'border-white border-2' : 'border-white/20'} // Update this line
+    shadow-xl backdrop-blur-sm overflow-hidden
+    ${isSelected ? 'ring-2 ring-white ring-opacity-50' : ''} // Add ring for selection
         `}
       >
         {/* Shine overlay */}
@@ -108,6 +111,8 @@ const CardDisplay = ({
   compact = false,
   availableHeight = null,
   gameType = 'ai', // 'ai' or 'online'
+  onCardClick = null, // Add this
+  selectedCard = null, // Add this
 }) => {
   // Calculate dynamic card height (esp. mobile/compact)
   const getDynamicCardHeight = () => {
@@ -157,12 +162,10 @@ const CardDisplay = ({
         {options.map((cardId) => (
           <div
             key={cardId}
-            // className={`group relative ${
-            //   isMobile ? "flex-1 min-w-0" : "h-full"
-            // }`}
             className={`group relative ${
     isMobile ? "flex-1 min-w-0 h-48" : "h-48"
-  }`}
+  } cursor-pointer`}
+   onClick={() => onCardClick && onCardClick(cardId)}
           >
             <CardSVG
               cardId={cardId}
@@ -170,6 +173,7 @@ const CardDisplay = ({
               isMobile={isMobile}
               compact={compact}
               dynamicHeight={dynamicHeight}
+              isSelected={selectedCard === cardId}
             />
           </div>
         ))}
