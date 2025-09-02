@@ -18,7 +18,8 @@ import {
 } from "../utils/soundsUtil";
 
 //const SERVER_URL = process.env.REACT_APP_SERVER_URL || "http://localhost:4000";
-const SERVER_URL = process.env.REACT_APP_SERVER_URL || "https://cardchess-backend.fly.dev";
+const SERVER_URL =
+  process.env.REACT_APP_SERVER_URL || "https://cardchess-backend.fly.dev";
 
 // Helper function to safely play audio
 function safePlay(audio) {
@@ -97,8 +98,12 @@ export default function OnlineGame({
         prevFenRef.current = initialFen;
         s.emit("request_initial_cards", { roomId: initialRoomId });
       } else {
-        console.log(`Connecting to ${SERVER_URL} (attempt ${connectionAttempts.current + 1})`);
-        
+        console.log(
+          `Connecting to ${SERVER_URL} (attempt ${
+            connectionAttempts.current + 1
+          })`
+        );
+
         // CRITICAL: Enhanced connection options for Fly.io
         s = io(SERVER_URL, {
           forceNew: true,
@@ -110,9 +115,9 @@ export default function OnlineGame({
           reconnectionDelayMax: 10000,
           maxReconnectionAttempts: 5,
           upgrade: true,
-          rememberUpgrade: true
+          rememberUpgrade: true,
         });
-        
+
         socketRef.current = s;
 
         s.on("connect", () => {
@@ -128,12 +133,16 @@ export default function OnlineGame({
           console.error("Connection error:", error);
           connectionAttempts.current++;
           setConnectionError(true);
-          
+
           if (connectionAttempts.current >= maxRetries) {
-            setStatusText("Failed to connect to server. Please try again later.");
+            setStatusText(
+              "Failed to connect to server. Please try again later."
+            );
             setIsSearching(false);
           } else {
-            setStatusText(`Connection failed. Retrying... (${connectionAttempts.current}/${maxRetries})`);
+            setStatusText(
+              `Connection failed. Retrying... (${connectionAttempts.current}/${maxRetries})`
+            );
             // Retry after delay
             reconnectTimer = setTimeout(() => {
               if (socketRef.current) {
@@ -524,86 +533,91 @@ export default function OnlineGame({
   }
 
   function onSquareClick(square) {
-  if (gameOver) return;
+    if (gameOver) return;
 
-  if (!isMyTurn) return;
-  if (!options || options.length === 0) {
-    setStatusText("Waiting for your cards.");
-    return;
-  }
-  
-  const piece = game.get(square);
-  const turn = game.turn();
-
-  // If a card is selected and we click on a square
-  if (selectedCard) {
-    // Check if clicked square has a piece that matches the selected card
-    if (piece && piece.color === turn && isMoveAllowedByCard(selectedCard, square, piece.type)) {
-      // Select this piece as the source
-      setSelectedFrom(square);
-      setHighlightSquares(getLegalMoveSquares(square));
-      setStatusText("");
+    if (!isMyTurn) return;
+    if (!options || options.length === 0) {
+      setStatusText("Waiting for your cards.");
       return;
     }
-    
-    // Check if clicked square is a valid destination for any piece matching the card
-    for (let sourceSquare of ALL_SQUARES) {
-      const sourcePiece = game.get(sourceSquare);
-      if (!sourcePiece || sourcePiece.color !== turn) continue;
-      
-      if (isMoveAllowedByCard(selectedCard, sourceSquare, sourcePiece.type)) {
-        const moves = game.moves({ square: sourceSquare, verbose: true }) || [];
-        const validMove = moves.find(m => m.to === square);
-        
-        if (validMove) {
-          // Found a valid move from a piece matching the card to this destination
-          if (performMoveIfValid(sourceSquare, square)) {
-            setSelectedCard(null);
-            return;
+
+    const piece = game.get(square);
+    const turn = game.turn();
+
+    // If a card is selected and we click on a square
+    if (selectedCard) {
+      // Check if clicked square has a piece that matches the selected card
+      if (
+        piece &&
+        piece.color === turn &&
+        isMoveAllowedByCard(selectedCard, square, piece.type)
+      ) {
+        // Select this piece as the source
+        setSelectedFrom(square);
+        setHighlightSquares(getLegalMoveSquares(square));
+        setStatusText("");
+        return;
+      }
+
+      // Check if clicked square is a valid destination for any piece matching the card
+      for (let sourceSquare of ALL_SQUARES) {
+        const sourcePiece = game.get(sourceSquare);
+        if (!sourcePiece || sourcePiece.color !== turn) continue;
+
+        if (isMoveAllowedByCard(selectedCard, sourceSquare, sourcePiece.type)) {
+          const moves =
+            game.moves({ square: sourceSquare, verbose: true }) || [];
+          const validMove = moves.find((m) => m.to === square);
+
+          if (validMove) {
+            // Found a valid move from a piece matching the card to this destination
+            if (performMoveIfValid(sourceSquare, square)) {
+              setSelectedCard(null);
+              return;
+            }
           }
         }
       }
-    }
-    
-    // If we get here, the click wasn't a valid destination, so clear selections
-    setSelectedCard(null);
-    setSelectedFrom(null);
-    setHighlightSquares({});
-    return;
-  }
 
-  // Rest of your existing onSquareClick logic (when no card is selected)
-  if (!selectedFrom) {
-    if (
-      piece &&
-      piece.color === turn &&
-      isMoveAllowedByAnyCard(options, square, piece.type)
-    ) {
-      setSelectedFrom(square);
-      setHighlightSquares(getLegalMoveSquares(square));
-      setStatusText("");
-    } else {
-      if (piece && piece.color === turn)
-        setStatusText("That piece isn't allowed by your current cards.");
-    }
-    return;
-  }
-  
-  if (performMoveIfValid(selectedFrom, square)) {
-  } else {
-    if (
-      piece &&
-      piece.color === turn &&
-      isMoveAllowedByAnyCard(options, square, piece.type)
-    ) {
-      setSelectedFrom(square);
-      setHighlightSquares(getLegalMoveSquares(square));
-    } else {
+      // If we get here, the click wasn't a valid destination, so clear selections
+      setSelectedCard(null);
       setSelectedFrom(null);
       setHighlightSquares({});
+      return;
+    }
+
+    // Rest of your existing onSquareClick logic (when no card is selected)
+    if (!selectedFrom) {
+      if (
+        piece &&
+        piece.color === turn &&
+        isMoveAllowedByAnyCard(options, square, piece.type)
+      ) {
+        setSelectedFrom(square);
+        setHighlightSquares(getLegalMoveSquares(square));
+        setStatusText("");
+      } else {
+        if (piece && piece.color === turn)
+          setStatusText("That piece isn't allowed by your current cards.");
+      }
+      return;
+    }
+
+    if (performMoveIfValid(selectedFrom, square)) {
+    } else {
+      if (
+        piece &&
+        piece.color === turn &&
+        isMoveAllowedByAnyCard(options, square, piece.type)
+      ) {
+        setSelectedFrom(square);
+        setHighlightSquares(getLegalMoveSquares(square));
+      } else {
+        setSelectedFrom(null);
+        setHighlightSquares({});
+      }
     }
   }
-}
 
   function onSquareRightClick() {
     setSelectedFrom(null);
@@ -648,44 +662,44 @@ export default function OnlineGame({
   }
 
   function handleCardClick(cardId) {
-  if (!isMyTurn || gameOver) return;
-  
-  if (selectedCard === cardId) {
-    // Deselect if same card clicked
-    setSelectedCard(null);
-    setSelectedFrom(null);
-    setHighlightSquares({});
-    return;
-  }
-  
-  setSelectedCard(cardId);
-  
-  // Find all pieces that match this card
-  const matchingSquares = [];
-  
-  for (let square of ALL_SQUARES) {
-    const piece = game.get(square);
-    if (!piece || piece.color !== game.turn()) continue;
-    
-    if (isMoveAllowedByCard(cardId, square, piece.type)) {
-      matchingSquares.push(square);
+    if (!isMyTurn || gameOver) return;
+
+    if (selectedCard === cardId) {
+      // Deselect if same card clicked
+      setSelectedCard(null);
+      setSelectedFrom(null);
+      setHighlightSquares({});
+      return;
+    }
+
+    setSelectedCard(cardId);
+
+    // Find all pieces that match this card
+    const matchingSquares = [];
+
+    for (let square of ALL_SQUARES) {
+      const piece = game.get(square);
+      if (!piece || piece.color !== game.turn()) continue;
+
+      if (isMoveAllowedByCard(cardId, square, piece.type)) {
+        matchingSquares.push(square);
+      }
+    }
+
+    // Highlight all legal moves for matching pieces
+    const allHighlights = {};
+    matchingSquares.forEach((square) => {
+      const squareHighlights = getLegalMoveSquares(square);
+      Object.assign(allHighlights, squareHighlights);
+    });
+
+    setHighlightSquares(allHighlights);
+    if (matchingSquares.length > 0) {
+      setSelectedFrom(matchingSquares[0]);
+    } else {
+      setSelectedFrom(null);
     }
   }
-  
-  // Highlight all legal moves for matching pieces
-  const allHighlights = {};
-  matchingSquares.forEach(square => {
-    const squareHighlights = getLegalMoveSquares(square);
-    Object.assign(allHighlights, squareHighlights);
-  });
-  
-  setHighlightSquares(allHighlights);
-  if (matchingSquares.length > 0) {
-    setSelectedFrom(matchingSquares[0]);
-  } else {
-    setSelectedFrom(null);
-  }
-}
 
   const ALL_SQUARES = genSquares();
 
@@ -711,6 +725,10 @@ export default function OnlineGame({
     const maxSize = Math.min(availableHeight, availableWidth);
     return Math.min(maxSize, 750);
   };
+
+  // Add this custom square styles for emerald dark squares
+  const customDarkSquareStyle = { backgroundColor: "#059669" }; // emerald-600
+  const customLightSquareStyle = { backgroundColor: "#f1f5f9" }; // slate-100
 
   // Enhanced loading screen with connection status
   if (isSearching && !isFriendMode) {
@@ -800,8 +818,8 @@ export default function OnlineGame({
                   <div
                     className={`w-2 h-2 rounded-full flex-shrink-0 ${
                       socketRef.current?.connected
-                        ? isMyTurn 
-                          ? "bg-emerald-400" 
+                        ? isMyTurn
+                          ? "bg-emerald-400"
                           : "bg-blue-400"
                         : "bg-red-400"
                     }`}
@@ -809,18 +827,17 @@ export default function OnlineGame({
                   <span
                     className={`text-xs font-medium flex-shrink-0 ${
                       socketRef.current?.connected
-                        ? isMyTurn 
-                          ? "text-emerald-400" 
+                        ? isMyTurn
+                          ? "text-emerald-400"
                           : "text-blue-400"
                         : "text-red-400"
                     }`}
                   >
                     {socketRef.current?.connected
-                      ? isMyTurn 
-                        ? "Your Turn" 
+                      ? isMyTurn
+                        ? "Your Turn"
                         : "Opponent Turn"
-                      : "Disconnected"
-                    }
+                      : "Disconnected"}
                   </span>
                 </div>
               </div>
@@ -841,6 +858,8 @@ export default function OnlineGame({
                     borderRadius: "0px",
                     boxShadow: "0 4px 20px rgba(0, 0, 0, 0.4)",
                   }}
+                  customDarkSquareStyle={customDarkSquareStyle}
+                  customLightSquareStyle={customLightSquareStyle}
                 />
               </div>
 
@@ -910,9 +929,7 @@ export default function OnlineGame({
                           if (time == null) return "10:00";
                           const mins = Math.floor(time / 60);
                           const secs = time % 60;
-                          return `${mins}:${secs
-                            .toString()
-                            .padStart(2, "0")}`;
+                          return `${mins}:${secs.toString().padStart(2, "0")}`;
                         })()}
                       </div>
                     </div>
@@ -955,7 +972,7 @@ export default function OnlineGame({
                     return Math.max(120, availableSpace);
                   })()}
                   onCardClick={handleCardClick} // Add this
-  selectedCard={selectedCard} // Add this
+                  selectedCard={selectedCard} // Add this
                 />
               </div>
 
@@ -1016,6 +1033,8 @@ export default function OnlineGame({
                   borderRadius: "8px",
                   boxShadow: "0 8px 24px rgba(0, 0, 0, 0.3)",
                 }}
+                customDarkSquareStyle={customDarkSquareStyle}
+                customLightSquareStyle={customLightSquareStyle}
               />
             </div>
 
@@ -1146,7 +1165,7 @@ export default function OnlineGame({
                   gameType="online"
                   isMobile={false}
                   onCardClick={handleCardClick} // Add this
-  selectedCard={selectedCard} // Add this
+                  selectedCard={selectedCard} // Add this
                 />
 
                 {/* Game controls */}
@@ -1204,8 +1223,16 @@ export default function OnlineGame({
                       </div>
                       <div>
                         <span className="text-slate-400">Connection:</span>{" "}
-                        <span className={socketRef.current?.connected ? "text-emerald-400" : "text-red-400"}>
-                          {socketRef.current?.connected ? "Connected" : "Disconnected"}
+                        <span
+                          className={
+                            socketRef.current?.connected
+                              ? "text-emerald-400"
+                              : "text-red-400"
+                          }
+                        >
+                          {socketRef.current?.connected
+                            ? "Connected"
+                            : "Disconnected"}
                         </span>
                       </div>
                     </div>

@@ -679,7 +679,7 @@ export default function HomePage({ socket }) {
               <FeatureCard
                 icon="🎯"
                 title="Strategic Choice"
-                description="Choose wisely from your cards based on board position and long-term strategy"
+                description="Choose wisely from your cards based on board position and strategy"
                 delay={200}
               />
               <FeatureCard
