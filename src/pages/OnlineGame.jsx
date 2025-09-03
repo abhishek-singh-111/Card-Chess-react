@@ -953,8 +953,8 @@ export default function OnlineGame({
             </div>
 
             {/* Chess board container */}
-            <div className="relative bg-slate-900/40 backdrop-blur-sm border-b border-white/10">
-              <div className="p-1 flex justify-center">
+            <div className="flex-1 min-h-0 flex flex-col">
+              <div className="relative bg-gradient-to-b from-slate-800/30 to-slate-700/30">
                 <Chessboard
                   position={gameFen}
                   boardOrientation={color === "w" ? "white" : "black"}
@@ -970,144 +970,145 @@ export default function OnlineGame({
                   customDarkSquareStyle={customDarkSquareStyle}
                   customLightSquareStyle={customLightSquareStyle}
                 />
+                <div className="absolute inset-y-0 left-0 w-1 bg-gradient-to-r from-slate-900/80 to-transparent"></div>
+                <div className="absolute inset-y-0 right-0 w-1 bg-gradient-to-l from-slate-900/80 to-transparent"></div>
               </div>
 
-              <div className="absolute inset-y-0 left-0 w-1 bg-gradient-to-r from-slate-900/80 to-transparent"></div>
-              <div className="absolute inset-y-0 right-0 w-1 bg-gradient-to-l from-slate-900/80 to-transparent"></div>
-            </div>
-
-            {/* Bottom section */}
-            <div className="flex-1 bg-slate-800/20 backdrop-blur-sm flex flex-col">
-              <div className="px-3 py-2 border-b border-white/10">
-                {mode === "timed" ? (
-                  <div className="flex items-center justify-between py-1.5 px-3 bg-slate-800/20 backdrop-blur-sm rounded-lg border border-slate-600/40">
-                    <div className="flex items-center gap-2 flex-1 min-w-0">
-                      <div className="w-8 h-8 bg-emerald-600 rounded-full flex items-center justify-center flex-shrink-0">
-                        <span className="text-white text-sm font-bold">
-                          {color === "w" ? "W" : "B"}
-                        </span>
+              {/* Bottom section */}
+              <div className="flex-1 bg-slate-800/20 backdrop-blur-sm flex flex-col">
+                <div className="px-3 py-2 border-b border-white/10">
+                  {mode === "timed" ? (
+                    <div className="flex items-center justify-between py-1.5 px-3 bg-slate-800/20 backdrop-blur-sm rounded-lg border border-slate-600/40">
+                      <div className="flex items-center gap-2 flex-1 min-w-0">
+                        <div className="w-8 h-8 bg-emerald-600 rounded-full flex items-center justify-center flex-shrink-0">
+                          <span className="text-white text-sm font-bold">
+                            {color === "w" ? "W" : "B"}
+                          </span>
+                        </div>
+                        <div className="flex flex-col min-w-0">
+                          <span className="text-white text-xs font-medium truncate">
+                            You
+                          </span>
+                          <div className="flex items-center gap-1 overflow-x-auto scrollbar-hide">
+                            {(color === "w" ? whiteCaptured : blackCaptured)
+                              .length === 0 ? (
+                              <span className="text-slate-500 text-xs">
+                                No pieces
+                              </span>
+                            ) : (
+                              (color === "w" ? whiteCaptured : blackCaptured)
+                                .slice(0, 8)
+                                .map((piece, index) => (
+                                  <div
+                                    key={index}
+                                    className="w-3 h-3 bg-slate-700/40 rounded border border-slate-600/30 flex items-center justify-center flex-shrink-0"
+                                  >
+                                    <img
+                                      src={`https://chessboardjs.com/img/chesspieces/wikipedia/${
+                                        color === "w" ? "b" : "w"
+                                      }${piece.toUpperCase()}.png`}
+                                      alt={piece}
+                                      className="w-2.5 h-2.5 opacity-90"
+                                    />
+                                  </div>
+                                ))
+                            )}
+                            {(color === "w" ? whiteCaptured : blackCaptured)
+                              .length > 8 && (
+                              <span className="text-slate-400 text-xs">
+                                +
+                                {(color === "w" ? whiteCaptured : blackCaptured)
+                                  .length - 8}
+                              </span>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                      <div className="flex flex-col min-w-0">
-                        <span className="text-white text-xs font-medium truncate">
-                          You
-                        </span>
-                        <div className="flex items-center gap-1 overflow-x-auto scrollbar-hide">
-                          {(color === "w" ? whiteCaptured : blackCaptured)
-                            .length === 0 ? (
-                            <span className="text-slate-500 text-xs">
-                              No pieces
-                            </span>
-                          ) : (
-                            (color === "w" ? whiteCaptured : blackCaptured)
-                              .slice(0, 8)
-                              .map((piece, index) => (
-                                <div
-                                  key={index}
-                                  className="w-3 h-3 bg-slate-700/40 rounded border border-slate-600/30 flex items-center justify-center flex-shrink-0"
-                                >
-                                  <img
-                                    src={`https://chessboardjs.com/img/chesspieces/wikipedia/${
-                                      color === "w" ? "b" : "w"
-                                    }${piece.toUpperCase()}.png`}
-                                    alt={piece}
-                                    className="w-2.5 h-2.5 opacity-90"
-                                  />
-                                </div>
-                              ))
-                          )}
-                          {(color === "w" ? whiteCaptured : blackCaptured)
-                            .length > 8 && (
-                            <span className="text-slate-400 text-xs">
-                              +
-                              {(color === "w" ? whiteCaptured : blackCaptured)
-                                .length - 8}
-                            </span>
-                          )}
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <div
+                          className={`w-2 h-2 rounded-full ${
+                            isMyTurn ? "bg-emerald-400" : "bg-slate-600"
+                          }`}
+                        ></div>
+                        <div className="text-white font-mono font-bold text-sm">
+                          {(() => {
+                            const time = color === "w" ? timers.w : timers.b;
+                            if (time == null) return "10:00";
+                            const mins = Math.floor(time / 60);
+                            const secs = time % 60;
+                            return `${mins}:${secs
+                              .toString()
+                              .padStart(2, "0")}`;
+                          })()}
                         </div>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      <div
-                        className={`w-2 h-2 rounded-full ${
-                          isMyTurn ? "bg-emerald-400" : "bg-slate-600"
-                        }`}
-                      ></div>
-                      <div className="text-white font-mono font-bold text-sm">
-                        {(() => {
-                          const time = color === "w" ? timers.w : timers.b;
-                          if (time == null) return "10:00";
-                          const mins = Math.floor(time / 60);
-                          const secs = time % 60;
-                          return `${mins}:${secs.toString().padStart(2, "0")}`;
-                        })()}
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <CapturedPieces
-                    pieces={color === "w" ? whiteCaptured : blackCaptured}
-                    color={color === "w" ? "w" : "b"}
-                    label="Your captures"
-                    chessComStyle={true}
-                  />
-                )}
-              </div>
-
-              {/* Cards section */}
-              <div className="flex-1 px-3 py-3 border-b border-white/10 min-h-0">
-                <CardDisplay
-                  options={options}
-                  isMyTurn={isMyTurn}
-                  isMobile={true}
-                  gameType="online"
-                  compact={true}
-                  availableHeight={(() => {
-                    if (typeof window === "undefined") return 120;
-
-                    const statusHeight = mode === "timed" ? 60 : 40;
-                    const boardHeight = window.innerWidth;
-                    const capturedHeight = 80;
-                    const controlsHeight = 70;
-                    const padding = 16;
-
-                    const usedHeight =
-                      statusHeight +
-                      boardHeight +
-                      capturedHeight +
-                      controlsHeight +
-                      padding;
-                    const availableSpace = window.innerHeight - usedHeight;
-
-                    return Math.max(120, availableSpace);
-                  })()}
-                  onCardClick={handleCardClick} // Add this
-                  selectedCard={selectedCard} // Add this
-                />
-              </div>
-
-              {/* Game controls */}
-              <div className="px-3 py-3">
-                <div className="flex gap-2">
-                  {!gameOver && (
-                    <button
-                      onClick={handleResign}
-                      className="flex-1 py-3 px-4 bg-red-600/80 active:bg-red-700 text-white font-semibold rounded-xl transition-all duration-200 text-sm min-h-[44px] flex items-center justify-center"
-                    >
-                      Resign
-                    </button>
+                  ) : (
+                    <CapturedPieces
+                      pieces={color === "w" ? whiteCaptured : blackCaptured}
+                      color={color === "w" ? "w" : "b"}
+                      label="Your captures"
+                      chessComStyle={true}
+                    />
                   )}
+                </div>
 
-                  <button
-                    onClick={() => {
-                      if (socketRef.current && roomId) {
-                        socketRef.current.emit("leave_match", { roomId });
-                      }
-                      navigate("/");
-                    }}
-                    className="flex-1 py-3 px-4 bg-white/10 active:bg-white/20 text-white font-semibold rounded-xl transition-all duration-200 border border-white/20 text-sm min-h-[44px] flex items-center justify-center"
-                  >
-                    Exit
-                  </button>
+                {/* Cards section */}
+                <div className="flex-1 px-3 py-3 border-b border-white/10 min-h-0">
+                  <CardDisplay
+                    options={options}
+                    isMyTurn={isMyTurn}
+                    isMobile={true}
+                    gameType="online"
+                    compact={true}
+                    availableHeight={(() => {
+                      if (typeof window === "undefined") return 120;
+
+                      const statusHeight = mode === "timed" ? 60 : 40;
+                      const boardHeight = window.innerWidth;
+                      const capturedHeight = 80;
+                      const controlsHeight = 70;
+                      const padding = 16;
+
+                      const usedHeight =
+                        statusHeight +
+                        boardHeight +
+                        capturedHeight +
+                        controlsHeight +
+                        padding;
+                      const availableSpace = window.innerHeight - usedHeight;
+
+                      return Math.max(120, availableSpace);
+                    })()}
+                    onCardClick={handleCardClick} // Add this
+                    selectedCard={selectedCard} // Add this
+                  />
+                </div>
+
+                {/* Game controls */}
+                <div className="px-3 py-3">
+                  <div className="flex gap-2">
+                    {!gameOver && (
+                      <button
+                        onClick={handleResign}
+                        className="flex-1 py-3 px-4 bg-red-600/80 active:bg-red-700 text-white font-semibold rounded-xl transition-all duration-200 text-sm min-h-[44px] flex items-center justify-center"
+                      >
+                        Resign
+                      </button>
+                    )}
+
+                    <button
+                      onClick={() => {
+                        if (socketRef.current && roomId) {
+                          socketRef.current.emit("leave_match", { roomId });
+                        }
+                        navigate("/");
+                      }}
+                      className="flex-1 py-3 px-4 bg-white/10 active:bg-white/20 text-white font-semibold rounded-xl transition-all duration-200 border border-white/20 text-sm min-h-[44px] flex items-center justify-center"
+                    >
+                      Exit
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
