@@ -9,6 +9,7 @@ import CardDisplay from "../components/CardDisplay";
 import CapturedPieces from "../components/CapturedPieces";
 import GameOverModal from "../components/GameOverModal";
 import { useLocation } from "react-router-dom";
+import analytics from "../analytics";
 
 import {
   moveSound,
@@ -47,6 +48,18 @@ export default function OnlineGame({
 
   const isFriendMode = !!externalSocket;
   const selectedMode = params.get("mode") || "standard";
+  const modeLabel = isFriendMode
+    ? "mode_friend"
+    : selectedMode === "timed"
+    ? "mode_online_timed"
+    : "mode_online";
+
+  useEffect(() => {
+    analytics.startTimer(modeLabel);
+    return () => {
+      analytics.endTimer(modeLabel);
+    };
+  }, [modeLabel]);
 
   // Core state
   const [statusText, setStatusText] = useState("Connecting...");
@@ -127,6 +140,7 @@ export default function OnlineGame({
           setStatusText("Connected. Finding match...");
           setIsSearching(true);
           s.emit("find_game", { mode: selectedMode });
+          analytics.track("queue_enter", { mode: selectedMode });
         });
 
         s.on("connect_error", (error) => {
@@ -179,6 +193,12 @@ export default function OnlineGame({
       s.on("waiting", () => {
         setIsSearching(true);
         setStatusText("Waiting for opponent...");
+      });
+
+      analytics.track("game_start", {
+        mode: isFriendMode ? "friend" : selectedMode,
+        color: color === "w" ? "white" : "black",
+        roomId: roomId,
       });
 
       s.on("match_found", ({ roomId: rid, color: col, fen, mode: m }) => {
@@ -316,6 +336,16 @@ export default function OnlineGame({
         } else {
           finalMsg = message || "Game over.";
         }
+        analytics.track("game_end", {
+          mode: isFriendMode ? "friend" : selectedMode,
+          reason,
+          outcome:
+            reason === "resign"
+              ? resignedId === socketRef.current?.id
+                ? "loss"
+                : "win"
+              : reason,
+        });
         safePlay(endSound);
         setGameOverMessage(finalMsg);
         setShowGameOverModal(true);

@@ -1,6 +1,7 @@
 // src/App.js
-import React, { useState } from "react";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import React, { useState, useEffect } from "react";
+import { BrowserRouter, Routes, Route, useLocation } from "react-router-dom";
+import analytics from "./analytics";
 import HomePage from "./pages/HomePage";
 import io from "socket.io-client";
 import OnlineGame from "./pages/OnlineGame";
@@ -15,6 +16,19 @@ import FriendGameModal from "./components/FriendGameModal";
 const SERVER_URL = process.env.REACT_APP_SERVER_URL || "https://cardchess-backend.fly.dev";
 
 export default function App() {
+  // init analytics once
+   useEffect(() => {
+     analytics.init();
+   }, []);
+ 
+   // track SPA page views
+   function PageTracker() {
+     const location = useLocation();
+     useEffect(() => {
+       analytics.trackPageView(location.pathname);
+     }, [location.pathname]);
+     return null;
+   }
    //const [socket] = useState(() => io(SERVER_URL));
    const [socket] = useState(() => io(SERVER_URL, {
     transports: ["websocket", "polling"]
@@ -23,6 +37,7 @@ export default function App() {
   return (
     <>
     <BrowserRouter>
+    <PageTracker />
       <Routes>
         <Route path="/" element={<HomePage socket={socket} />} />
         <Route path="/online" element={<OnlineGame />} />

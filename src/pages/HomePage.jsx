@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import emailjs from "emailjs-com";
 import FriendGameModal from "../components/FriendGameModal";
+import analytics from "../analytics";
 
 function GameModeButton({
   to,
@@ -488,6 +489,7 @@ export default function HomePage({ socket }) {
   const [showFriendModal, setShowFriendModal] = useState(false);
 
   const handleGameModeClick = (path) => {
+    analytics.track("mode_button_click", { target: path === "/friend" ? "friend" : "online" });
     if (path === "/friend") {
       setShowFriendModal(true); // Directly show FriendGameModal
     } else {
@@ -497,6 +499,7 @@ export default function HomePage({ socket }) {
   };
 
   const handleSelectMode = (mode) => {
+    analytics.track("mode_selected", { mode });
     setShowModeModal(false);
     if (selectedPath === "/friend") {
       setShowFriendModal(true);
@@ -609,7 +612,6 @@ export default function HomePage({ socket }) {
                 {/* Game Mode Buttons */}
                 <div className="space-y-4 max-w-lg mx-auto lg:mx-0">
                   <GameModeButton
-                    //to="#"
                     icon="🌐"
                     variant="primary"
                     description="Challenge players worldwide"
@@ -619,7 +621,6 @@ export default function HomePage({ socket }) {
                   </GameModeButton>
 
                   <GameModeButton
-                    //to="#"
                     icon="👥"
                     variant="secondary"
                     description="Invite friends to play together"
@@ -630,6 +631,7 @@ export default function HomePage({ socket }) {
 
                   <GameModeButton
                     to="/ai"
+                    onClick={() => analytics.track("mode_button_click", { target: "ai" })}
                     icon="🤖"
                     variant="accent"
                     description="Practice against smart AI"

@@ -7,6 +7,7 @@ import CardDisplay from "../components/CardDisplay";
 import CapturedPieces from "../components/CapturedPieces";
 // Import the new modular AI system
 import { makeSmartAIMove } from "../utils/enhancedSmartAI";
+import analytics from "../analytics";
 // import { getGamePhase, isEndgame } from "../utils/gamePhaseDetector";
 
 import {
@@ -140,6 +141,15 @@ export default function AIGame() {
     if (g.isCheck()) {
       safePlay(checkSound);
     }
+    // on any terminal result, fire a single event (guard with a ref if needed)
+analytics.track("game_end", {
+  mode: "ai",
+  reason: g.isCheckmate() ? "checkmate" : g.isDraw() ? "draw" : "other",
+  outcome: g.isCheckmate()
+    ? (g.turn() === color ? "win" : "loss") // note: check turn/outcome logic to your convention
+    : "draw",
+});
+
     return false;
   }
 
@@ -416,6 +426,12 @@ export default function AIGame() {
     setHighlightSquares({});
     setShowGameOverModal(false);
   };
+
+  useEffect(() => {
+  analytics.startTimer("mode_ai");
+  return () => analytics.endTimer("mode_ai");
+}, []);
+
 
   // Add this custom square styles for emerald dark squares
   const customDarkSquareStyle = { backgroundColor: "#059669" }; // emerald-600
