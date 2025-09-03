@@ -873,6 +873,85 @@ export default function OnlineGame({
               </div>
             </div>
 
+            <div className="px-3 py-2 border-b border-white/10">
+              {mode === "timed" ? (
+                // Chess.com style with pieces on left, timer on right
+                <div className="flex items-center justify-between py-1.5 px-3 bg-slate-800/20 backdrop-blur-sm rounded-lg border border-slate-600/40">
+                  {/* Left side - Opponent info with captured pieces */}
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                    <div className="w-8 h-8 bg-slate-600 rounded-full flex items-center justify-center flex-shrink-0">
+                      <span className="text-white text-sm font-bold">
+                        {color === "w" ? "B" : "W"}
+                      </span>
+                    </div>
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-white text-xs font-medium truncate">
+                        Opponent
+                      </span>
+                      <div className="flex items-center gap-1 overflow-x-auto scrollbar-hide">
+                        {(color === "w" ? blackCaptured : whiteCaptured)
+                          .length === 0 ? (
+                          <span className="text-slate-500 text-xs">
+                            No pieces
+                          </span>
+                        ) : (
+                          (color === "w" ? blackCaptured : whiteCaptured)
+                            .slice(0, 8)
+                            .map((piece, index) => (
+                              <div
+                                key={index}
+                                className="w-3 h-3 bg-slate-700/40 rounded border border-slate-600/30 flex items-center justify-center flex-shrink-0"
+                              >
+                                <img
+                                  src={`https://chessboardjs.com/img/chesspieces/wikipedia/${
+                                    color === "w" ? "w" : "b"
+                                  }${piece.toUpperCase()}.png`}
+                                  alt={piece}
+                                  className="w-2.5 h-2.5 opacity-90"
+                                />
+                              </div>
+                            ))
+                        )}
+                        {(color === "w" ? blackCaptured : whiteCaptured)
+                          .length > 8 && (
+                          <span className="text-slate-400 text-xs">
+                            +
+                            {(color === "w" ? blackCaptured : whiteCaptured)
+                              .length - 8}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Right side - Timer */}
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <div
+                      className={`w-2 h-2 rounded-full ${
+                        !isMyTurn ? "bg-emerald-400" : "bg-slate-600"
+                      }`}
+                    ></div>
+                    <div className="text-white font-mono font-bold text-sm">
+                      {(() => {
+                        const time = color === "w" ? timers.b : timers.w;
+                        if (time == null) return "10:00";
+                        const mins = Math.floor(time / 60);
+                        const secs = time % 60;
+                        return `${mins}:${secs.toString().padStart(2, "0")}`;
+                      })()}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <CapturedPieces
+                  pieces={color === "w" ? blackCaptured : whiteCaptured}
+                  color={color === "w" ? "b" : "w"}
+                  label="Opponent captures"
+                  chessComStyle={true}
+                />
+              )}
+            </div>
+
             {/* Chess board container */}
             <div className="relative bg-slate-900/40 backdrop-blur-sm border-b border-white/10">
               <div className="p-1 flex justify-center">
