@@ -83,6 +83,7 @@ export default function FriendGameModal({ onClose, mode, socket }) {
       socket.off("error");
       socket.off("room_creator_active");
     };
+     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [socket, mode, step, inputId, creatorCheckInterval]);
 
   // Timer countdown for room expiration
@@ -99,6 +100,7 @@ export default function FriendGameModal({ onClose, mode, socket }) {
     }, 1000);
 
     return () => clearInterval(interval);
+     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [roomExpireTime, step]);
 
   const generateShareLink = (roomId, mode) => {
@@ -135,14 +137,6 @@ export default function FriendGameModal({ onClose, mode, socket }) {
       setRoomExpireTime(null);
     }
     onClose();
-  };
-
-  const formatTimeLeft = () => {
-    if (!roomExpireTime) return "";
-    const timeLeft = Math.max(0, roomExpireTime - Date.now());
-    const minutes = Math.floor(timeLeft / (1000 * 60));
-    const seconds = Math.floor((timeLeft % (1000 * 60)) / 1000);
-    return `${minutes}:${seconds.toString().padStart(2, "0")}`;
   };
 
   // ------------- UI -------------
