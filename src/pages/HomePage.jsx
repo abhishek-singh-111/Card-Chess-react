@@ -634,7 +634,7 @@ export default function HomePage({ socket }) {
                     onClick={() => analytics.track("mode_button_click", { target: "ai" })}
                     icon="🤖"
                     variant="accent"
-                    description="Practice against smart AI"
+                    description="Practice against a Bot"
                   >
                     Play With A Bot
                   </GameModeButton>

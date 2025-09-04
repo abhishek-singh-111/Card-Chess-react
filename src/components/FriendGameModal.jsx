@@ -8,18 +8,24 @@ export default function FriendGameModal({ onClose, mode, socket }) {
   const [step, setStep] = useState("menu"); // menu | creating | joining | waiting | playing
   const [roomId, setRoomId] = useState(null);
   const [inputId, setInputId] = useState("");
+  const [generatedLink, setGeneratedLink] = useState("");
+  const [linkCopied, setLinkCopied] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
-    socket.on("room_created", ({ roomId }) => {
+    socket.on("room_created", ({ roomId, mode }) => {
       setRoomId(roomId);
+      generateShareLink(roomId, mode);
       setStep("waiting");
     });
 
     socket.on("match_found", ({ roomId, color, fen, mode }) => {
       // Redirect instead of rendering OnlineGame
-      navigate(`/friend?mode=${mode}&roomId=${roomId}&color=${color}&fen=${fen}`);
+      const gameUrl = `/friend?mode=${mode}&roomId=${roomId}&color=${color}&fen=${encodeURIComponent(
+        fen
+      )}`;
       onClose();
+      navigate(gameUrl);
     });
 
     socket.on("room-ok", ({ roomId, mode }) => {
@@ -49,6 +55,33 @@ export default function FriendGameModal({ onClose, mode, socket }) {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [socket, mode]);
+
+  const generateShareLink = (roomId, mode) => {
+    const baseUrl = window.location.origin;
+    const shareUrl = `${baseUrl}/friend?roomId=${roomId}&mode=${mode}&join=true`;
+    setGeneratedLink(shareUrl);
+    return shareUrl;
+  };
+
+  const copyRoomId = async (text) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success("Room ID copied!");
+    } catch (err) {
+      toast.error("Failed to copy Room ID");
+    }
+  };
+
+  const copyShareLink = async (text) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setLinkCopied(true);
+      toast.success("Link copied to clipboard!");
+      setTimeout(() => setLinkCopied(false), 2000);
+    } catch (err) {
+      toast.error("Failed to copy link");
+    }
+  };
 
   // ------------- UI -------------
   return (
@@ -125,10 +158,50 @@ export default function FriendGameModal({ onClose, mode, socket }) {
         {step === "waiting" && (
           <div className="text-center space-y-3">
             <h2 className="text-lg text-white">Room Created</h2>
-            <p className="text-slate-300">Share this ID with your friend:</p>
-            <strong className="block text-emerald-400 text-xl">
-              {roomId || "..."}
-            </strong>
+
+            {/* Room ID Section */}
+            <div className="bg-slate-700/50 rounded-xl p-4 border border-slate-600/50">
+              <p className="text-slate-300 text-sm mb-2">Room ID:</p>
+              <div className="flex items-center gap-2">
+                <strong className="text-emerald-400 text-xl font-mono bg-slate-800/50 px-3 py-1 rounded-lg flex-1">
+                  {roomId || "..."}
+                </strong>
+                <button
+                  onClick={() => copyRoomId(roomId)}
+                  className="p-2 bg-slate-600 hover:bg-slate-500 rounded-lg text-white transition-colors"
+                >
+                  📋
+                </button>
+              </div>
+            </div>
+
+            {/* Share Link Section */}
+            <div className="bg-emerald-900/20 rounded-xl p-4 border border-emerald-600/30">
+              <p className="text-emerald-200 text-sm mb-2">
+                Or share this direct link:
+              </p>
+              <div className="flex items-center gap-2">
+                <input
+                  value={generatedLink}
+                  readOnly
+                  className="flex-1 px-3 py-2 bg-slate-800/50 border border-slate-600/50 rounded-lg text-white text-xs font-mono"
+                />
+                <button
+                  onClick={() => copyShareLink(generatedLink)}
+                  className={`px-3 py-2 rounded-lg font-semibold text-sm transition-all ${
+                    linkCopied
+                      ? "bg-green-600 text-white"
+                      : "bg-emerald-600 hover:bg-emerald-500 text-white"
+                  }`}
+                >
+                  {linkCopied ? "Copied!" : "Copy"}
+                </button>
+              </div>
+              <p className="text-emerald-300 text-xs mt-2">
+                Your friend can click this link to join instantly!
+              </p>
+            </div>
+
             <p className="text-slate-400">Waiting for friend to join...</p>
             <button
               onClick={() => {
@@ -187,7 +260,6 @@ export default function FriendGameModal({ onClose, mode, socket }) {
             </button>
           </div>
         )}
-        
       </div>
     </div>
   );
