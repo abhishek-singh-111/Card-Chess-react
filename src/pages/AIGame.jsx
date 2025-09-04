@@ -425,6 +425,7 @@ analytics.track("game_end", {
     setStatusText("New Game");
     setHighlightSquares({});
     setShowGameOverModal(false);
+    setLastMoveSquares(null);
   };
 
   useEffect(() => {
