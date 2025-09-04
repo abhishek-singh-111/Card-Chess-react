@@ -9,7 +9,7 @@ const server = http.createServer(app);
 
 const allowedOrigins = [
   "https://card-chess.netlify.app",
-  "http://localhost:3000"  // keep for local dev
+  "http://localhost:3000", // keep for local dev
 ];
 
 // CRITICAL FIX: Force websocket-only transport for Fly.io
@@ -17,15 +17,15 @@ const io = new Server(server, {
   cors: {
     origin: allowedOrigins,
     methods: ["GET", "POST"],
-    credentials: true
+    credentials: true,
   },
-  pingInterval: 25000,  // Increased for Fly.io stability
-  pingTimeout: 60000,   // Increased timeout
+  pingInterval: 25000, // Increased for Fly.io stability
+  pingTimeout: 60000, // Increased timeout
   transports: ["websocket"], // FORCE websocket only - no polling fallback
-  allowEIO3: true,      // Better compatibility
+  allowEIO3: true, // Better compatibility
   connectTimeout: 45000, // Connection timeout
   upgrade: true,
-  rememberUpgrade: true
+  rememberUpgrade: true,
 });
 
 app.get("/", (req, res) => {
@@ -34,11 +34,11 @@ app.get("/", (req, res) => {
 
 // Health check endpoint for Fly.io
 app.get("/health", (req, res) => {
-  res.status(200).json({ 
-    status: "healthy", 
+  res.status(200).json({
+    status: "healthy",
     timestamp: new Date().toISOString(),
     activeRooms: rooms.size,
-    waitingPlayers: waiting.length
+    waitingPlayers: waiting.length,
   });
 });
 
@@ -68,9 +68,13 @@ function cleanupRoom(roomId) {
 // Periodic cleanup of abandoned rooms
 setInterval(() => {
   for (const [roomId, room] of rooms.entries()) {
-    const whiteSocket = room.players.white ? io.sockets.sockets.get(room.players.white) : null;
-    const blackSocket = room.players.black ? io.sockets.sockets.get(room.players.black) : null;
-    
+    const whiteSocket = room.players.white
+      ? io.sockets.sockets.get(room.players.white)
+      : null;
+    const blackSocket = room.players.black
+      ? io.sockets.sockets.get(room.players.black)
+      : null;
+
     // If both players are disconnected, clean up the room
     if (!whiteSocket && !blackSocket) {
       console.log(`Cleaning up abandoned room: ${roomId}`);
@@ -134,27 +138,32 @@ function startTimer(roomId) {
   if (!room || room.mode !== "timed") return;
   if (room.interval) return; // Already running
 
-  room.interval = setInterval(() => {
-    if (!room || room.state !== "active") {
-      clearInterval(room.interval);
-      room.interval = null;
-      return;
-    }
+  // Add 2-second delay like chess.com, then start both timers
+  setTimeout(() => {
+    if (!rooms.get(roomId)) return; // Room might be deleted
 
-    const turn = room.game.turn();
-    room.timers[turn] = Math.max(0, room.timers[turn] - 1);
+    room.interval = setInterval(() => {
+      if (!room || room.state !== "active") {
+        clearInterval(room.interval);
+        room.interval = null;
+        return;
+      }
 
-    // Emit to both players
-    io.to(roomId).emit("timer_update", room.timers);
+      const turn = room.game.turn();
+      room.timers[turn] = Math.max(0, room.timers[turn] - 1);
 
-    // Timeout check
-    if (room.timers[turn] <= 0) {
-      endGame(roomId, "timeout", {
-        winner: turn === "w" ? "b" : "w",
-        message: `${turn === "w" ? "White" : "Black"} ran out of time!`,
-      });
-    }
-  }, 1000);
+      // Emit to both players
+      io.to(roomId).emit("timer_update", room.timers);
+
+      // Timeout check
+      if (room.timers[turn] <= 0) {
+        endGame(roomId, "timeout", {
+          winner: turn === "w" ? "b" : "w",
+          message: `${turn === "w" ? "White" : "Black"} ran out of time!`,
+        });
+      }
+    }, 1000);
+  }, 2000); // 2 second delay before timers start
 }
 
 function endGame(roomId, reason, extra = {}) {
@@ -180,7 +189,7 @@ io.engine.on("connection_error", (err) => {
 
 io.on("connection", (socket) => {
   console.log(`Socket connected: ${socket.id}`);
-  
+
   // Enhanced connection stability
   socket.on("disconnect", (reason) => {
     console.log(`Socket disconnected: ${socket.id}, reason: ${reason}`);
@@ -193,8 +202,11 @@ io.on("connection", (socket) => {
 
   // FIXED: Enhanced find_game with better logging
   socket.on("find_game", ({ mode }) => {
-    console.log(`Player ${socket.id} looking for ${mode} game. Waiting queue:`, waiting.length);
-    
+    console.log(
+      `Player ${socket.id} looking for ${mode} game. Waiting queue:`,
+      waiting.length
+    );
+
     if (mode !== "timed") mode = "standard";
 
     // Remove player from queue if already waiting (prevent duplicates)
@@ -208,11 +220,13 @@ io.on("connection", (socket) => {
     if (idx !== -1) {
       const otherEntry = waiting.splice(idx, 1)[0];
       const other = otherEntry.id;
-      
+
       // Verify the other socket still exists
       const otherSocket = io.sockets.sockets.get(other);
       if (!otherSocket) {
-        console.log(`Other player ${other} disconnected, adding current player to queue`);
+        console.log(
+          `Other player ${other} disconnected, adding current player to queue`
+        );
         waiting.push({ id: socket.id, mode });
         socket.emit("waiting");
         return;
@@ -221,7 +235,7 @@ io.on("connection", (socket) => {
       const roomId = `room-${socket.id.slice(0, 6)}-${other.slice(0, 6)}`;
       const game = new Chess();
       const players = { white: other, black: socket.id };
-      
+
       rooms.set(roomId, {
         game,
         players,
@@ -232,7 +246,9 @@ io.on("connection", (socket) => {
         interval: null,
       });
 
-      console.log(`Match found! Room: ${roomId}, White: ${other}, Black: ${socket.id}`);
+      console.log(
+        `Match found! Room: ${roomId}, White: ${other}, Black: ${socket.id}`
+      );
 
       socket.join(roomId);
       otherSocket.join(roomId);
@@ -249,6 +265,11 @@ io.on("connection", (socket) => {
         fen: game.fen(),
         mode,
       });
+
+      // Add this:
+      if (mode === "timed") {
+        startTimer(roomId);
+      }
 
       // Draw cards for white
       const whiteSid = players.white;
@@ -268,12 +289,14 @@ io.on("connection", (socket) => {
   // FIXED: Enhanced room creation with better error handling
   socket.on("create_room", ({ mode }) => {
     if (mode !== "timed") mode = "standard";
-    
+
     // Generate a more unique room ID
-    const roomId = `friend-${Date.now().toString(36)}-${Math.random().toString(36).substr(2, 6)}`;
+    const roomId = `friend-${Date.now().toString(36)}-${Math.random()
+      .toString(36)
+      .substr(2, 6)}`;
     const game = new Chess();
     const players = { white: socket.id, black: null };
-    
+
     const room = {
       game,
       players,
@@ -282,32 +305,33 @@ io.on("connection", (socket) => {
       mode,
       timers: { w: 600, b: 600 },
       interval: null,
-      created: Date.now()
+      created: Date.now(),
     };
-    
+
     rooms.set(roomId, room);
     socket.join(roomId);
-    
+
     console.log(`Room created: ${roomId} by ${socket.id}`);
     socket.emit("room_created", { roomId, mode });
   });
 
   // FIXED: Enhanced room checking
+  // Enhanced room checking with better validation
   socket.on("check_room", ({ roomId, mode }) => {
     console.log(`Checking room: ${roomId}`);
-    
+
     const room = rooms.get(roomId);
     if (!room) {
       console.log(`Room ${roomId} not found`);
       return socket.emit("error", "room-not-found");
     }
-    
+
     if (!isRoomCreatorPresent(roomId)) {
       console.log(`Room ${roomId} creator not present`);
       cleanupRoom(roomId);
       return socket.emit("error", "room-abandoned");
     }
-    
+
     if (room.players.black) {
       console.log(`Room ${roomId} is full`);
       return socket.emit("error", "room-full");
@@ -325,19 +349,19 @@ io.on("connection", (socket) => {
   // FIXED: Enhanced room joining
   socket.on("join_room", ({ roomId, mode }) => {
     console.log(`Player ${socket.id} attempting to join room: ${roomId}`);
-    
+
     const room = rooms.get(roomId);
     if (!room) {
       console.log(`Room ${roomId} not found for join`);
       return socket.emit("error", "room-not-found");
     }
-    
+
     if (!isRoomCreatorPresent(roomId)) {
       console.log(`Room ${roomId} creator not present for join`);
       cleanupRoom(roomId);
       return socket.emit("error", "room-abandoned");
     }
-    
+
     if (room.players.black) {
       console.log(`Room ${roomId} is full for join`);
       return socket.emit("error", "room-full");
@@ -362,6 +386,10 @@ io.on("connection", (socket) => {
       mode: room.mode,
     });
 
+    if (room.mode === "timed") {
+      startTimer(roomId);
+    }
+
     // Draw cards for white
     const whiteSid = room.players.white;
     const cardChoices = smartDrawFor(room.game);
@@ -383,7 +411,7 @@ io.on("connection", (socket) => {
       console.log(`Move attempted in non-existent room: ${roomId}`);
       return socket.emit("error", "room-not-found");
     }
-    
+
     const { game, players, drawn } = room;
 
     const turn = game.turn();
@@ -425,10 +453,6 @@ io.on("connection", (socket) => {
 
     game.move({ from, to, promotion: "q" });
 
-    if (room.mode === "timed") {
-      startTimer(roomId);
-    }
-
     // Consume only the used card
     room.drawn[socket.id].options = cardEntry.options.filter(
       (c) => c !== usedCard
@@ -440,7 +464,7 @@ io.on("connection", (socket) => {
       isCheckmate: game.isCheckmate(),
       isDraw: game.isDraw(),
     };
-    
+
     io.to(roomId).emit("game_state", { fen, status, lastMove: { from, to } });
 
     if (status.isCheckmate) {
@@ -470,7 +494,9 @@ io.on("connection", (socket) => {
 
     endGame(roomId, "resign", {
       resignedId: socket.id,
-      message: `${socket.id === room.players.white ? "White" : "Black"} resigned.`,
+      message: `${
+        socket.id === room.players.white ? "White" : "Black"
+      } resigned.`,
     });
   });
 
@@ -506,7 +532,7 @@ io.on("connection", (socket) => {
   socket.on("request_initial_cards", ({ roomId }) => {
     const room = rooms.get(roomId);
     if (!room) return;
-    
+
     const entry = room.drawn[socket.id];
     if (entry && entry.options) {
       console.log(`Sending initial cards to ${socket.id} in room ${roomId}`);
@@ -517,7 +543,7 @@ io.on("connection", (socket) => {
   socket.on("rematch_request", ({ roomId }) => {
     const room = rooms.get(roomId);
     if (!room) return;
-    
+
     const otherId =
       room.players.white === socket.id
         ? room.players.black
@@ -544,23 +570,27 @@ io.on("connection", (socket) => {
       room.game = newGame;
       room.drawn = {};
       room.state = "active";
-      
+
       // Reset and clear timers
       room.timers = { w: 600, b: 600 };
       if (room.interval) {
         clearInterval(room.interval);
         room.interval = null;
       }
-      
+
       io.to(roomId).emit("rematch_response", { accepted, roomId });
       io.to(roomId).emit("timer_update", room.timers);
-      
+
+      if (room.mode === "timed") {
+        startTimer(roomId);
+      }
+
       // Redraw cards for white to start
       const whiteSid = room.players.white;
       const cardChoices = smartDrawFor(newGame);
       room.drawn[whiteSid] = { options: cardChoices, chosen: null };
       io.to(whiteSid).emit("cards_drawn", { cards: cardChoices });
-      
+
       console.log(`Rematch started in room ${roomId}`);
     } else {
       io.to(requester).emit("rematch_declined");
@@ -611,7 +641,10 @@ io.on("connection", (socket) => {
         socket.join(roomId);
         rejoined = true;
         playerColor = "w";
-      } else if (room.players.black && !io.sockets.sockets.get(room.players.black)) {
+      } else if (
+        room.players.black &&
+        !io.sockets.sockets.get(room.players.black)
+      ) {
         room.players.black = socket.id;
         socket.join(roomId);
         rejoined = true;
@@ -637,12 +670,14 @@ io.on("connection", (socket) => {
       isCheckmate: game.isCheckmate(),
       isDraw: game.isDraw(),
     };
-    
+
     const entry = drawn[socket.id];
     const cards = entry && entry.options ? entry.options : [];
 
     socket.emit("rejoined", { fen, status, lastMove: null, cards });
-    console.log(`Player ${socket.id} rejoined room ${roomId} as ${playerColor}`);
+    console.log(
+      `Player ${socket.id} rejoined room ${roomId} as ${playerColor}`
+    );
   });
 
   // Enhanced disconnect handling
@@ -661,7 +696,9 @@ io.on("connection", (socket) => {
 
       if (!role) continue;
 
-      console.log(`Player ${socket.id} (${role}) disconnected from room ${roomId}`);
+      console.log(
+        `Player ${socket.id} (${role}) disconnected from room ${roomId}`
+      );
 
       if (roomId.startsWith("friend-")) {
         // Friend game → notify immediately
@@ -680,13 +717,13 @@ io.on("connection", (socket) => {
         if (disconnectTimers.has(roomId)) {
           clearTimeout(disconnectTimers.get(roomId));
         }
-        
+
         disconnectTimers.set(
           roomId,
           setTimeout(() => {
             const stillThere = rooms.get(roomId);
             if (!stillThere) return;
-            
+
             if (stillThere.state === "active") {
               socket.to(roomId).emit("opponent_left");
               cleanupRoom(roomId);
@@ -709,10 +746,10 @@ io.on("connection", (socket) => {
 });
 
 // Graceful shutdown handling
-process.on('SIGTERM', () => {
-  console.log('SIGTERM received, shutting down gracefully');
+process.on("SIGTERM", () => {
+  console.log("SIGTERM received, shutting down gracefully");
   server.close(() => {
-    console.log('Server closed');
+    console.log("Server closed");
     process.exit(0);
   });
 });
