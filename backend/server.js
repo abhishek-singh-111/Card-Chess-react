@@ -48,6 +48,7 @@ const PORT = process.env.PORT || 4000;
 const waiting = [];
 const rooms = new Map();
 const disconnectTimers = new Map();
+const ROOM_EXPIRATION_MS = 10 * 60 * 1000; // 10 minutes
 const DISCONNECT_GRACE_MS = 15000; // Increased grace period
 
 // Enhanced room cleanup
@@ -67,6 +68,7 @@ function cleanupRoom(roomId) {
 
 // Periodic cleanup of abandoned rooms
 setInterval(() => {
+  const now = Date.now();
   for (const [roomId, room] of rooms.entries()) {
     const whiteSocket = room.players.white
       ? io.sockets.sockets.get(room.players.white)
@@ -76,7 +78,7 @@ setInterval(() => {
       : null;
 
     // If both players are disconnected, clean up the room
-    if (!whiteSocket && !blackSocket) {
+    if ((!whiteSocket && !blackSocket) || (room.expiresAt && now > room.expiresAt)) {
       console.log(`Cleaning up abandoned room: ${roomId}`);
       cleanupRoom(roomId);
     }
@@ -306,6 +308,7 @@ io.on("connection", (socket) => {
       timers: { w: 600, b: 600 },
       interval: null,
       created: Date.now(),
+      expiresAt: Date.now() + ROOM_EXPIRATION_MS,
     };
 
     rooms.set(roomId, room);
@@ -325,6 +328,13 @@ io.on("connection", (socket) => {
       console.log(`Room ${roomId} not found`);
       return socket.emit("error", "room-not-found");
     }
+
+    // Check if room has expired
+  if (Date.now() > room.expiresAt) {
+    console.log(`Room ${roomId} has expired`);
+    cleanupRoom(roomId);
+    return socket.emit("error", "room-expired");
+  }
 
     if (!isRoomCreatorPresent(roomId)) {
       console.log(`Room ${roomId} creator not present`);
@@ -356,11 +366,20 @@ io.on("connection", (socket) => {
       return socket.emit("error", "room-not-found");
     }
 
-    if (!isRoomCreatorPresent(roomId)) {
-      console.log(`Room ${roomId} creator not present for join`);
-      cleanupRoom(roomId);
-      return socket.emit("error", "room-abandoned");
-    }
+    // Check if room has expired
+  if (Date.now() > room.expiresAt) {
+    console.log(`Room ${roomId} has expired`);
+    cleanupRoom(roomId);
+    return socket.emit("error", "room-expired");
+  }
+
+    // ENHANCED: Use the same validation as ping_room_creator
+  const creatorSocket = io.sockets.sockets.get(room.players.white);
+  if (!creatorSocket || !creatorSocket.rooms.has(roomId)) {
+    console.log(`Room ${roomId} creator has disconnected or left the room`);
+    cleanupRoom(roomId);
+    return socket.emit("error", "room-abandoned");
+  }
 
     if (room.players.black) {
       console.log(`Room ${roomId} is full for join`);
@@ -386,16 +405,31 @@ io.on("connection", (socket) => {
       mode: room.mode,
     });
 
-    if (room.mode === "timed") {
-      startTimer(roomId);
-    }
-
     // Draw cards for white
     const whiteSid = room.players.white;
     const cardChoices = smartDrawFor(room.game);
     room.drawn[whiteSid] = { options: cardChoices, chosen: null };
     io.to(whiteSid).emit("cards_drawn", { cards: cardChoices });
+
+    if (room.mode === "timed") {
+      startTimer(roomId);
+    }
   });
+
+  socket.on("ping_room_creator", ({ roomId }) => {
+  const room = rooms.get(roomId);
+  if (!room) {
+    return socket.emit("error", "room-not-found");
+  }
+  
+  const creatorSocket = io.sockets.sockets.get(room.players.white);
+  if (!creatorSocket || !creatorSocket.rooms.has(roomId)) {
+    cleanupRoom(roomId);
+    return socket.emit("error", "room-abandoned");
+  }
+  
+  socket.emit("room_creator_active");
+});
 
   socket.on("cancel_search", () => {
     const idx = waiting.findIndex((w) => w.id === socket.id);
@@ -508,6 +542,16 @@ io.on("connection", (socket) => {
     const isBlack = room.players.black === socket.id;
 
     console.log(`Player ${socket.id} leaving room ${roomId}`);
+
+    // For friend rooms, if the creator (white) leaves before the game starts, clean up immediately
+  if (roomId.startsWith("friend-") && isWhite && room.state === "waiting") {
+    console.log(`Friend room creator left before game started, cleaning up room ${roomId}`);
+    // Notify anyone trying to join
+    socket.to(roomId).emit("error", "room-abandoned");
+    cleanupRoom(roomId);
+    socket.leave(roomId);
+    return;
+  }
 
     // Clear any running timer interval
     if (room.interval) {

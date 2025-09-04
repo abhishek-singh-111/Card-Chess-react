@@ -10,12 +10,16 @@ export default function FriendGameModal({ onClose, mode, socket }) {
   const [inputId, setInputId] = useState("");
   const [generatedLink, setGeneratedLink] = useState("");
   const [linkCopied, setLinkCopied] = useState(false);
+  const [roomExpireTime, setRoomExpireTime] = useState(null);
+  const [creatorCheckInterval, setCreatorCheckInterval] = useState(null);
   const navigate = useNavigate();
 
   useEffect(() => {
     socket.on("room_created", ({ roomId, mode }) => {
       setRoomId(roomId);
       generateShareLink(roomId, mode);
+      // Set expiration time (10 minutes from now)
+      setRoomExpireTime(Date.now() + 10 * 60 * 1000);
       setStep("waiting");
     });
 
@@ -35,26 +39,67 @@ export default function FriendGameModal({ onClose, mode, socket }) {
 
     socket.on("error", (errorType) => {
       if (errorType === "room-not-found") {
-        toast.error("Room not found. Please check the ID and try again.");
+        toast.error(
+          "Room not found. The room may have expired or been deleted."
+        );
         setStep("joining");
       } else if (errorType === "room-full") {
         toast.error("This room is already full.");
         setStep("joining");
       } else if (errorType === "room-abandoned") {
-        toast.error("Room creator has left. Please join another room.");
+        toast.error("Room creator has left. The room is no longer available.");
+        setStep("joining");
+      } else if (errorType === "room-expired") {
+        toast.error("This room has expired. Please create a new one.");
         setStep("joining");
       }
     });
 
+    // Fix the interval logic
+    if (step === "joining_wait") {
+      const interval = setInterval(() => {
+        socket.emit("ping_room_creator", { roomId: inputId.trim() });
+      }, 3000);
+      setCreatorCheckInterval(interval);
+    } else {
+      if (creatorCheckInterval) {
+        clearInterval(creatorCheckInterval);
+        setCreatorCheckInterval(null);
+      }
+    }
+
+    socket.on("room_creator_active", () => {
+      // Creator is still there, continue waiting
+      console.log("Room creator is still active");
+    });
+
     return () => {
-      // socket.disconnect();
+      if (creatorCheckInterval) {
+        clearInterval(creatorCheckInterval);
+      }
       socket.off("room_created");
       socket.off("match_found");
       socket.off("room-ok");
       socket.off("error");
+      socket.off("room_creator_active");
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [socket, mode]);
+  }, [socket, mode, step, inputId, creatorCheckInterval]);
+
+  // Timer countdown for room expiration
+  useEffect(() => {
+    if (!roomExpireTime || step !== "waiting") return;
+
+    const interval = setInterval(() => {
+      const timeLeft = roomExpireTime - Date.now();
+      if (timeLeft <= 0) {
+        toast.error("Room expired. Please create a new one.");
+        handleCancelRoom();
+        clearInterval(interval);
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [roomExpireTime, step]);
 
   const generateShareLink = (roomId, mode) => {
     const baseUrl = window.location.origin;
@@ -83,6 +128,23 @@ export default function FriendGameModal({ onClose, mode, socket }) {
     }
   };
 
+  const handleCancelRoom = () => {
+    if (roomId) {
+      socket.emit("leave_match", { roomId });
+      setRoomId(null);
+      setRoomExpireTime(null);
+    }
+    onClose();
+  };
+
+  const formatTimeLeft = () => {
+    if (!roomExpireTime) return "";
+    const timeLeft = Math.max(0, roomExpireTime - Date.now());
+    const minutes = Math.floor(timeLeft / (1000 * 60));
+    const seconds = Math.floor((timeLeft % (1000 * 60)) / 1000);
+    return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+  };
+
   // ------------- UI -------------
   return (
     <div className="fixed inset-0 flex items-center justify-center bg-black/60 z-50">
@@ -90,10 +152,10 @@ export default function FriendGameModal({ onClose, mode, socket }) {
         {/* Close button */}
         {step !== "playing" && (
           <button
-            onClick={onClose}
+            onClick={handleCancelRoom}
             className="absolute top-3 right-3 text-slate-400 hover:text-white"
           >
-            X
+            ✕
           </button>
         )}
 
@@ -169,6 +231,7 @@ export default function FriendGameModal({ onClose, mode, socket }) {
                 <button
                   onClick={() => copyRoomId(roomId)}
                   className="p-2 bg-slate-600 hover:bg-slate-500 rounded-lg text-white transition-colors"
+                  title="Copy Room ID"
                 >
                   📋
                 </button>
@@ -176,9 +239,9 @@ export default function FriendGameModal({ onClose, mode, socket }) {
             </div>
 
             {/* Share Link Section */}
-            <div className="bg-emerald-900/20 rounded-xl p-4 border border-emerald-600/30">
+            <div className="bg-slate-700/50 rounded-xl p-4 border border-slate-600/50">
               <p className="text-emerald-200 text-sm mb-2">
-                Or share this direct link:
+                Share this link with your friend:
               </p>
               <div className="flex items-center gap-2">
                 <input
@@ -202,16 +265,19 @@ export default function FriendGameModal({ onClose, mode, socket }) {
               </p>
             </div>
 
-            <p className="text-slate-400">Waiting for friend to join...</p>
+            {/* Warning message */}
+            <div className="bg-amber-900/20 rounded-lg p-3 border border-amber-600/30">
+              <p className="text-amber-200 text-sm">
+                ⚠️ Keep this window open! If you close it, your friend won't be
+                able to join.
+              </p>
+            </div>
+
             <button
-              onClick={() => {
-                socket.emit("leave_match", { roomId });
-                setRoomId(null);
-                onClose();
-              }}
+              onClick={handleCancelRoom}
               className="w-full py-2 mt-2 bg-red-600 hover:bg-red-500 text-white rounded-xl"
             >
-              Cancel
+              Cancel Room
             </button>
           </div>
         )}
@@ -223,7 +289,12 @@ export default function FriendGameModal({ onClose, mode, socket }) {
               placeholder="Enter Room ID"
               value={inputId}
               onChange={(e) => setInputId(e.target.value)}
-              className="w-full px-4 py-2 rounded-lg border border-slate-600 bg-slate-700 text-white"
+              className="w-full px-4 py-2 rounded-lg border border-slate-600 bg-slate-700 text-white placeholder-slate-400"
+              onKeyPress={(e) => {
+                if (e.key === "Enter" && inputId.trim()) {
+                  socket.emit("check_room", { roomId: inputId.trim(), mode });
+                }
+              }}
             />
             <button
               onClick={() => {
@@ -235,7 +306,7 @@ export default function FriendGameModal({ onClose, mode, socket }) {
               }}
               className="w-full py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl"
             >
-              Join
+              Join Room
             </button>
             <button
               onClick={() => setStep("menu")}
@@ -249,9 +320,16 @@ export default function FriendGameModal({ onClose, mode, socket }) {
         {step === "joining_wait" && (
           <div className="text-center space-y-3">
             <h2 className="text-lg text-white">Joining Room...</h2>
-            <p className="text-slate-400">
-              Trying to connect with Room ID: {inputId}
-            </p>
+            <div className="flex justify-center gap-1 mb-4">
+              {[1, 2, 3].map((i) => (
+                <div
+                  key={i}
+                  className="bg-blue-400 rounded-full animate-bounce w-2 h-2"
+                  style={{ animationDelay: `${i * 150}ms` }}
+                />
+              ))}
+            </div>
+            <p className="text-slate-400">Connecting to Room: {inputId}</p>
             <button
               onClick={() => setStep("menu")}
               className="w-full mt-2 py-2 text-slate-400 hover:text-white text-sm"
